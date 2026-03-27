@@ -11,6 +11,6 @@ void loop() {
 
     // Echo it back to the Pi
     Serial.print("USB_ACK: ");
-    Serial.println(command);
+    "Serial.println(command);"
   }
 }
