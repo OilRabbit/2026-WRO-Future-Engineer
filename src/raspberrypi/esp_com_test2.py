@@ -23,6 +23,7 @@ run_OC2 = False
 reset_OC = True
 cmd = ""
 try:
+    print("IDLE")
     while True:
         if reset_OC:
             reset_OC = False
@@ -32,36 +33,35 @@ try:
             if cmd == "T":
                 run_OC1 = False
                 reset_OC = True
+                print("IDLE")
             else:
                 esp_serial.write((cmd + "\n").encode('utf-8'))
                 time.sleep(0.1)
                 if esp_serial.in_waiting > 0:
                     reply = esp_serial.readline().decode('utf-8', errors = 'ignore').strip()
-                    print("ESP32 replies: {}".format(reply))
+                    print("ESP: {}".format(reply))
         elif run_OC2:
             cmd = input("OC2>: ")
             if cmd == "T":
                 run_OC2 = False
                 reset_OC = True
+                print("IDLE")
             else:
                 esp_serial.write((cmd + "\n").encode('utf-8'))
                 time.sleep(0.1)
                 if esp_serial.in_waiting > 0:
                     reply = esp_serial.readline().decode('utf-8', errors = 'ignore').strip()
-                    print("ESP32 replies: {}".format(reply))
+                    print("ESP: {}".format(reply))
         else:
-            cmd = input("IDLE>: ")
-            if cmd == "OC1":
-                run_OC1 = True
-            elif cmd == "OC2":
-                run_OC2 = True
-            else:
-                pass
-            esp_serial.write((cmd + "\n").encode('utf-8'))
-            time.sleep(0.1)
             if esp_serial.in_waiting > 0:
                 reply = esp_serial.readline().decode('utf-8', errors = 'ignore').strip()
-                print("ESP32 replies: {}".format(reply))
+                print("ESP: {}".format(reply))
+                if reply == "ROC1":
+                    run_OC1 = True
+                elif reply == "ROC2":
+                    run_OC2 = True
+                else:
+                    pass
 
 except KeyboardInterrupt:
     esp_serial.close()
