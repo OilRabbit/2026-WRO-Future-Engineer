@@ -1,5 +1,5 @@
-#ifndef OC1_H
-#define OC1_H
+#ifndef OC_H
+#define OC_H
 
 #include <Arduino.h>
 #include "steering.h"
@@ -11,6 +11,7 @@
 #include "motor.h"
 #include "buttons.h"
 #include "calculation.h"
+#include "Serial.h"
 
 // States for OC1 FSM
 typedef enum {
@@ -22,9 +23,9 @@ typedef enum {
   ENDING_STATE,
   DEBUG_STATE,
   INTO_SECTOR,
-} OC1_STATES;
+} OC_STATES;
 
 void OCmain(void *parameters);
-void showOC1Time(TFT_COLUMN column, int line_number, int text_size, uint16_t text_colour, bool clearDisplay);
+void showOCTime(TFT_COLUMN column, int line_number, int text_size, uint16_t text_colour, bool clearDisplay);
 
 #endif

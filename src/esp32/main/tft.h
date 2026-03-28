@@ -6,6 +6,7 @@
 #include <Adafruit_GFX.h>
 #include <Adafruit_ST7789.h>
 #include "timestamp.h"
+#include <string>
 
 // Colour code for text colour on the LCD
 #define TFT_BLACK 0x0000

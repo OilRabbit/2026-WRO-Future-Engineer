@@ -2,9 +2,9 @@
 
 // A global variables for OC1
 bool run_OC1 = false;
-bool reset_OC1 = true;
-long OC1_starttime = 0; 
-long OC1_endtime = 0; 
+bool run_OC2 = false;
+long OC_starttime = 0; 
+long OC_endtime = 0; 
 
 // Functions for safely suspend and resume threads
 static inline void safeSuspend(TaskHandle_t h){ if (h) vTaskSuspend(h); }
@@ -182,36 +182,37 @@ static inline void safeResume(TaskHandle_t h){ if (h) vTaskResume(h); }
 //   vTaskDelay(5 / portTICK_PERIOD_MS);
 // }
 
+void OC1_program(){
+  String cmd = receiveNprint_msg(TFT_LEFT_CLN, 13, 2, TFT_WHITE, false);
+}
+
+void OC2_program(){
+  String cmd = receiveNprint_msg(TFT_LEFT_CLN, 13, 2, TFT_WHITE, false);
+}
+
 /**
  * @brief The main thread function for OC1
  */
 void OCmain(void *){
   while (1){
-    if (Serial.available() > 0) {
-      String command = Serial.readStringUntil('\n');
-      command.trim();
-      
-      Serial.print("ESP: ");
-      Serial.println(command);
-
-      String receieved_text = String(command);
-      tft.clearln(TFT_LEFT_CLN, 5);
-      tft.displayLeftln(5, 2, receieved_text.c_str(), TFT_WHITE, true);
+    if (is_btn_bumped(TFT_BTN1)){
+      run_OC1 = !run_OC1;
+      if (run_OC1) send_msg("ROC1");
+    } else if (is_btn_bumped(TFT_BTN2)){
+      run_OC2 = !run_OC2;
+      if (run_OC2) send_msg("ROC2");
+    } else if (is_btn_bumped(TFT_BTN3)){
+      motor_stop(BRAKE);
+      steering_percentage = 0;
     }
-    // if (is_btn_bumped(TFT_BTN1)){
-    //   run_OC1 = !run_OC1;
-    //   reset_OC1 = true;
-    // }
-    // if (run_OC1){
-    //   // OC1_fixed(90, 85, 10, 11);
-    //   OC1_tof(90, 85, 13);
-    // } else {
-    //   safeResume(ToF1Thread);
-    //   safeResume(ToF2Thread);
-    //   motor_stop(BRAKE);
-    //   steering_percentage = 0;
-    // }
-    vTaskDelay(1 / portTICK_PERIOD_MS);
+    if (run_OC1){
+      OC1_program();
+    } else if (run_OC2){
+      OC2_program();
+    } else {
+      String cmd = receiveNprint_msg(TFT_LEFT_CLN, 11, 2, TFT_WHITE, false);
+    }
+    vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
 
@@ -225,17 +226,22 @@ void OCmain(void *){
  * @param clearDisplay; bool; (UNUSED) whether the display will be cleared before running
  * 
  */
-void showOC1Time(TFT_COLUMN column, int line_number, int text_size, uint16_t text_colour = TFT_WHITE, bool clearDisplay = false){
+void showOCTime(TFT_COLUMN column, int line_number, int text_size, uint16_t text_colour = TFT_WHITE, bool clearDisplay = false){
   static long total_ms = 0;
   static long seconds = 0;
   static long milliseconds = 0;
-  total_ms = OC1_endtime - OC1_starttime;
+  total_ms = OC_endtime - OC_starttime;
   seconds = total_ms / 1000;
   milliseconds = total_ms % 1000;
-  String OC1_time_text = String(seconds) + "." + String(milliseconds);
+  String OC_time_text = String(seconds) + "." + String(milliseconds);
   String OC1_onoff_text = run_OC1 ? "OC1 ON" : "OC1 OFF";
+  String OC2_onoff_text = run_OC2 ? "OC2 ON" : "OC2 OFF";
   tft.clearln(TFT_LEFT_CLN, line_number);
   tft.clearln(TFT_RIGHT_CLN, line_number);
-  tft.displayLeftln(line_number, text_size, OC1_time_text.c_str(), text_colour, false);
-  tft.displayRightln(line_number, text_size, OC1_onoff_text.c_str(), run_OC1 ? TFT_GREEN : TFT_RED, false);
+  tft.displayLeftln(line_number, text_size, OC_time_text.c_str(), text_colour, false);
+  tft.displayRightln(line_number++, text_size, OC1_onoff_text.c_str(), run_OC1 ? TFT_GREEN : TFT_RED, false);
+  tft.clearln(TFT_LEFT_CLN, line_number);
+  tft.clearln(TFT_RIGHT_CLN, line_number);
+  tft.displayLeftln(line_number, text_size, OC_time_text.c_str(), text_colour, false);
+  tft.displayRightln(line_number, text_size, OC2_onoff_text.c_str(), run_OC2 ? TFT_GREEN : TFT_RED, false);
 }
