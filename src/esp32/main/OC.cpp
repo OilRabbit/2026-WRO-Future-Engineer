@@ -195,16 +195,19 @@ void OC2_program(){
  */
 void OCmain(void *){
   while (1){
-    if (is_btn_bumped(TFT_BTN1)){
+    if (is_btn_bumped(TFT_BTN1) && !run_OC2){
       run_OC1 = !run_OC1;
       if (run_OC1) send_msg("ROC1");
-    } else if (is_btn_bumped(TFT_BTN2)){
+      else send_msg("EOC1");
+    } else if (is_btn_bumped(TFT_BTN2) && !run_OC1){
       run_OC2 = !run_OC2;
       if (run_OC2) send_msg("ROC2");
+      else send_msg("EOC2");
     } else if (is_btn_bumped(TFT_BTN3)){
       motor_stop(BRAKE);
       steering_percentage = 0;
     }
+
     if (run_OC1){
       OC1_program();
     } else if (run_OC2){
@@ -212,6 +215,7 @@ void OCmain(void *){
     } else {
       String cmd = receiveNprint_msg(TFT_LEFT_CLN, 11, 2, TFT_WHITE, false);
     }
+
     vTaskDelay(10 / portTICK_PERIOD_MS);
   }
 }
