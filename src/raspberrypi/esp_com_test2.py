@@ -29,29 +29,25 @@ try:
             reset_OC = False
             pass
         elif run_OC1:
-            cmd = input("OC1>: ")
-            if cmd == "T":
-                run_OC1 = False
-                reset_OC = True
-                print("IDLE")
-            else:
-                esp_serial.write((cmd + "\n").encode('utf-8'))
-                time.sleep(0.1)
-                if esp_serial.in_waiting > 0:
-                    reply = esp_serial.readline().decode('utf-8', errors = 'ignore').strip()
-                    print("ESP: {}".format(reply))
+            esp_serial.write(("hi1\n").encode('utf-8'))
+            time.sleep(0.2)
+            if esp_serial.in_waiting > 0:
+                reply = esp_serial.readline().decode('utf-8', errors = 'ignore').strip()
+                print("ESP: {}".format(reply))
+                if reply == "EOC1":
+                    run_OC1 = False
+                    reset_OC = True
+                    print("IDLE")
         elif run_OC2:
-            cmd = input("OC2>: ")
-            if cmd == "T":
-                run_OC2 = False
-                reset_OC = True
-                print("IDLE")
-            else:
-                esp_serial.write((cmd + "\n").encode('utf-8'))
-                time.sleep(0.1)
-                if esp_serial.in_waiting > 0:
-                    reply = esp_serial.readline().decode('utf-8', errors = 'ignore').strip()
-                    print("ESP: {}".format(reply))
+            esp_serial.write(("hi2\n").encode('utf-8'))
+            time.sleep(0.2)
+            if esp_serial.in_waiting > 0:
+                reply = esp_serial.readline().decode('utf-8', errors = 'ignore').strip()
+                print("ESP: {}".format(reply))
+                if reply == "EOC2":
+                    run_OC2 = False
+                    reset_OC = True
+                    print("IDLE")
         else:
             if esp_serial.in_waiting > 0:
                 reply = esp_serial.readline().decode('utf-8', errors = 'ignore').strip()
