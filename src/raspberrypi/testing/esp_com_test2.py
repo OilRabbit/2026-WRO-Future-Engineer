@@ -1,8 +1,6 @@
 import serial
 import time
 
-# Change this to match what you found in 'ls /dev/ttyACM*'
-# Usually it is /dev/ttyACM0
 usb_port = '/dev/ttyACM1'
 
 esp_serial = serial.Serial(usb_port, 115200, timeout = 1)
