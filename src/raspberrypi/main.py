@@ -34,8 +34,9 @@ reset_OC = True
 # Function for receiving msg from ESP and print the message with timestamp
 def esp_replyNprint():
     timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    reply = esp.read_message()
-    print("{timestamp} ESP: {reply}")
+    if reply is not None:
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        print(f"{timestamp} ESP: {reply}")
     return reply
 
 try:
@@ -77,7 +78,7 @@ try:
             while run_OC2:
                 reply = esp_replyNprint()
                 if reply == "EOC2":
-                    run_OC1 = False
+                    run_OC2 = False
                     break
                 # OC2 FSM #
 
@@ -85,6 +86,7 @@ try:
                 time.sleep(0.005)
                     
         else:
+            # IDLE
             reply = esp_replyNprint()
             if reply == "ROC1":
                 reset_OC = True
@@ -94,6 +96,7 @@ try:
                 reset_OC = True
                 run_OC2 = True
                 continue
+            time.sleep(0.05)
 
 except KeyboardInterrupt:
     print("\nShutting down...")
