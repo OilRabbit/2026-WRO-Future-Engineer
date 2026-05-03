@@ -60,6 +60,12 @@ try:
                     run_OC1 = False
                     break
                 _, _, track = get_latest_data()
+                """
+                Example of checking if a given point lies inside the track, and return the distance to the nearest edge:
+                is_inside, distance = get_track_distance(320, 180)
+                if is_inside:
+                    # Do sth
+                """
                 # OC1 FSM #
                 """
                 for example:

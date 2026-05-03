@@ -314,6 +314,20 @@ def stop_vision_system():
 
 atexit.register(_cleanup_hardware)
 
+# Check if the given point lies inside the polygon, and return the shortest distance to the nearest edge
+def get_track_distance(x, y):
+    with _data_lock:
+        poly = track_data["polygon"]
+        
+    if poly is None:
+        return False, 0.0
+
+    raw_distance = cv2.pointPolygonTest(poly, (float(x), float(y)), True)
+    
+    is_inside = raw_distance >= 0
+    exact_distance = abs(raw_distance)
+    return is_inside, exact_distance
+
 if __name__ == "__main__":
     from picamera2 import Picamera2 as picam2
     print("=======Initializing=======")
