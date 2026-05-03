@@ -30,6 +30,7 @@ print("======= End of Init =======")
 run_OC1 = False
 run_OC2 = False
 reset_OC = True
+num_of_turn = 0
 
 # Function for receiving msg from ESP and print the message with timestamp
 def esp_replyNprint():
@@ -70,6 +71,18 @@ try:
                 ...etc
                 ```
                 """
+		if num_of_turn == 12 && '''the 12nd turn is ended and going along the wall''':
+		    esp.send_command("last forward, 10, 0")
+		elif '''suitable to turn left''':
+		    esp.send_command("turn left, 10, 70")
+		elif '''suitable to turn right''':
+                    esp.send_command("turn right, 10, 70")
+		elif '''gettig right from the ideal track''':
+                    esp.send_command("move left, 10, 10")
+		elif '''gettig right from the ideal track''':
+                    esp.send_command("move right, 10, 10")
+		else
+		    esp.send_command("forward, 10, 0")
                 # End of OC1 FSM #
                 time.sleep(0.005)
                     
