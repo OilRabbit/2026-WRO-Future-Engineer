@@ -31,6 +31,7 @@ run_OC1 = False
 run_OC2 = False
 reset_OC = True
 num_of_turn = 0
+is_clockwise = True
 
 # Function for receiving msg from ESP and print the message with timestamp
 def esp_replyNprint():
@@ -77,16 +78,33 @@ try:
                 ...etc
                 ```
                 """
-		if num_of_turn == 12 && '''the 12nd turn is ended and going along the wall''':
+		#Format eg: esp.send_command("<what to do>, <speed>, <streering percentage>")
+		#The last straight road
+		if num_of_turn == 12 && get_track_distance(150,100)[0] == True && get_track_distance(490,100)[0] == True:
 		    esp.send_command("last forward, 10, 0")
-		elif '''suitable to turn left''':
+		#Turn left
+		elif get_track_distance(0, 180)[0] == True:
+		    num_of_turn++
+		    is_clockwise = False
 		    esp.send_command("turn left, 10, 70")
-		elif '''suitable to turn right''':
+		#Turn right
+		elif get_track_distance(640, 180)[0] == True:
+		    num_of_turn++
+		    is_clockwise = True
                     esp.send_command("turn right, 10, 70")
-		elif '''gettig right from the ideal track''':
+		#Too right, move left(clockwise)
+		elif is_clockwise == True && get_track_distance(640, 360)[0] == True:
                     esp.send_command("move left, 10, 10")
-		elif '''gettig right from the ideal track''':
+		#Too right, move left(anti-clockwise)
+                elif is_clockwise == False && get_track_distance(40, 360)[0] == False:
+                    esp.send_command("move left, 10, 10")
+		#Too left, move right(clockwise)
+                elif is_clockwise == True && get_track_distance(600, 360)[0] == False:
                     esp.send_command("move right, 10, 10")
+                #Too left, move right(anti-clockwise)
+                elif is_clockwise == False && get_track_distance(0, 360)[0] == True:
+                    esp.send_command("move right, 10, 10")
+		#Go straight
 		else
 		    esp.send_command("forward, 10, 0")
                 # End of OC1 FSM #
