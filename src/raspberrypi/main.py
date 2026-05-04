@@ -91,19 +91,19 @@ try:
 		        elif get_track_distance(640, 180)[0] == True:
 		            num_of_turn++
 		            is_clockwise = True
-                            esp.send_command("turn right, 10, 70")
+                    esp.send_command("turn right, 10, 70")
 		        #Too right, move left(clockwise)
 		        elif is_clockwise == True && get_track_distance(640, 360)[0] == True:
-                            esp.send_command("move left, 10, 10")
+                    esp.send_command("move left, 10, 10")
 		        #Too right, move left(anti-clockwise)
-                        elif is_clockwise == False && get_track_distance(40, 360)[0] == False:
-                            esp.send_command("move left, 10, 10")
+                elif is_clockwise == False && get_track_distance(40, 360)[0] == False:
+                    esp.send_command("move left, 10, 10")
 		        #Too left, move right(clockwise)
-                        elif is_clockwise == True && get_track_distance(600, 360)[0] == False:
-                            esp.send_command("move right, 10, 10")
-                        #Too left, move right(anti-clockwise)
-                        elif is_clockwise == False && get_track_distance(0, 360)[0] == True:
-                            esp.send_command("move right, 10, 10")
+                elif is_clockwise == True && get_track_distance(600, 360)[0] == False:
+                    esp.send_command("move right, 10, 10")
+                #Too left, move right(anti-clockwise)
+                elif is_clockwise == False && get_track_distance(0, 360)[0] == True:
+                    esp.send_command("move right, 10, 10")
 		        #Go straight
 		        else
 		            esp.send_command("forward, 10, 0")
