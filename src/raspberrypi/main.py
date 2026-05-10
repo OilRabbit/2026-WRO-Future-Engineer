@@ -39,7 +39,6 @@ end_time
 recorded_time
 
 #Checkpoints (default as clockwise case)
-# TODO: make them into list or tuple or two separate variables
 left_turning_point = [0, 180] #check direction
 right_turning_point = [640, 180] #check direction
 turning_point = right_turning_point #check if the robot get to the position that should turn
@@ -48,7 +47,6 @@ track_right = [640, 360] #check if the robot is getting right from the ideal tra
 ending_point = [320, 100] #check if the robot is at the ideal point to end
 
 #States
-# TODO: make them into enums
 class States(Enum):
 	FIRST_SECTOR = 1 #Move forward until it knows the direction to run
 	WAIT_TURN_STATE = 2 #Move forward for fixed distance to get to the ideal point to turn
@@ -59,135 +57,126 @@ class States(Enum):
 
 # Function for receiving msg from ESP and print the message with timestamp
 def esp_replyNprint():
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    if reply is not None:
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        print(f"{timestamp} ESP: {reply}")
-    return reply
+	timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+	if reply is not None:
+		timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+		print(f"{timestamp} ESP: {reply}")
+	return reply
 
 try:
-    print("IDLE")
-    while True:
-        if reset_OC:
-            # Add anything you need to reset before each OC run below this line #
-
-            # End of reset #
-            reset_OC = False
-            print("Resetted")
-            print("IDLE")
-	    state = FIRST_SECTOR
-            continue
-            
-    	# TODO: add timer
-        elif run_OC1:
-            esp.send_command("OC1")
-	    start_time = time.perf_counter()
-            while run_OC1:
-		end_time = time.perf_counter()
-                reply = esp_replyNprint()
-                if reply == "EOC1":
-                    run_OC1 = False
-                    break
-                _, _, track = get_latest_data()
-                """
-                Example of checking if a given point lies inside the track, and return the distance to the nearest edge:
-                is_inside, distance = get_track_distance(320, 180)
-                if is_inside:
-                    # Do sth
-                """
-                # OC1 FSM #
-                """
-                for example:
-                ```
-                if state == DETECT_STATE:
-                    # Do sth
-                elif state == WHATEVER:
-                    # Do sth
-                ...etc
-                ```
-                """
-                	# TODO: distance set to -1 if not need specific degree run
-		        #Format eg: esp.send_command("<speed>, <streering percentage>, <distance(-1 when not needed)>, <what to do>")
-		        #The first sector
-		        if state == First_SECTOR:
-		            esp.send_command("10, 0, -1, go forward")
-			    while get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False && get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
-			        time.sleep(0.005)
-			    if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True:
-				is_clockwise = False
-				turning_point = left_turning_point
-				# TODO: change the following two variables type
-				track_left = [0, 360]
-				track_right = [40, 360]
-			    state = WAIT_TURN_STATE
-			    continue
-		        #Wait turn
-		        elif state == WAIT_TURN_STATE:
-		            esp.send_command("10, 0, 100, wait turn")
-			    state = TURNING_STATE
-			    continue
-		        #Turn 
-		        elif state == TURNING_STATE:
-		        	num_of_turn++
-		        	esp.send_command("10, 70, 200, turn")
-		        	state = DASH_AFTER_TURNING_STATE
-				continue
-			#Dash to pass the corner
-			elif state == DASH_AFTER_TURING_STATE:
-				esp.send_command("10, 0, 100, go forward")
-				if num_of_turn == 12:
-					state = LAST_RUN
-				else:
-					state = RUN_SECTOR_STATE
-				continue
-		        #Run sector and keep a certain distance from the inner barrier
-                	elif state == RUN_SECTOR_STATE:
-			    if (get_track_distance(track_right[0], track_right[1])[0] == True && is_clockwise) || (get_track_distance(track_left[0], track_left[1])[0] == True && not is_clockwise):
-                    	    	esp.send_command("10, 10, -1, move right")
-			    elif (get_track_distance(track_left[0], track_left[1])[0] == False && is_clockwise) || (get_track_distance(track_right[0], track_right[1])[0] == False && not is_clockwise):
-                                esp.send_command("10, 10, -1, move left")
-			    if get_track_distance(turning_point[0], turning_point[1])[0] == True:
-				state = WAIT_TURN_STATE
-		        #Last forward to stop
-                	elif state == LAST_RUN:
-                	    esp.send_command("10, 0, -1, move forward")
-			    #Wait until the ending_point reach the wall in front of the robot
-			    while get_track_distance(ending_point[0], ending_point[1])[0] == True:
+	print("IDLE")
+	while True:
+		if reset_OC:
+			# Add anything you need to reset before each OC run below this line #
+			if run_OC1:
+				state = First_SECTOR
+			# End of reset #
+			reset_OC = False
+			print("Resetted")
+			print("IDLE")
+			state = FIRST_SECTOR
+			continue
+			
+		# TODO: add timer
+		elif run_OC1:
+			esp.send_command("OC1")
+			start_time = time.perf_counter()
+			while run_OC1:
+				end_time = time.perf_counter()
+				reply = esp_replyNprint()
+				if reply == "EOC1":
+					run_OC1 = False
+					break
+				_, _, track = get_latest_data()
+	
+				# OC1 FSM
+				#Format eg: esp.send_command("<speed>, <streering percentage>, <distance(-1 when not needed)>, <what to do>")
+				#The first sector
+				if state == First_SECTOR:
+					esp.send_command("10, 0, -1, go forward")
+					while get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
+						time.sleep(0.005)
+					if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True:
+						is_clockwise = False
+						turning_point = left_turning_point
+						track_left = [0, 360]
+						track_right = [40, 360]
+						state = WAIT_TURN_STATE
+					continue
+				
+				#Wait turn
+				elif state == WAIT_TURN_STATE:
+					esp.send_command("10, 0, 100, wait turn")
+					state = TURNING_STATE
+					continue
+				
+				#Turn 
+				elif state == TURNING_STATE:
+					num_of_turn += 1
+					esp.send_command("10, 70, 200, turn")
+					state = DASH_AFTER_TURNING_STATE
+					continue
+				
+				#Dash to pass the corner
+				elif state == DASH_AFTER_TURING_STATE:
+					esp.send_command("10, 0, 100, go forward")
+					if num_of_turn == 12:
+						state = LAST_RUN
+					else:
+						state = RUN_SECTOR_STATE
+					continue
+				
+				#Run sector and keep a certain distance from the inner barrier
+				elif state == RUN_SECTOR_STATE:
+					if (get_track_distance(track_right[0], track_right[1])[0] == True and is_clockwise) or (get_track_distance(track_left[0], track_left[1])[0] == True and not is_clockwise):
+						esp.send_command("10, 10, -1, move right")
+					elif (get_track_distance(track_left[0], track_left[1])[0] == False and is_clockwise) or (get_track_distance(track_right[0], track_right[1])[0] == False and not is_clockwise):
+						esp.send_command("10, 10, -1, move left")
+					if get_track_distance(turning_point[0], turning_point[1])[0] == True:
+						state = WAIT_TURN_STATE
+					continue
+	
+				#Last forward to stop
+				elif state == LAST_RUN:
+					esp.send_command("10, 0, -1, move forward")
+					#Wait until the ending_point reach the wall in front of the robot
+					while get_track_distance(ending_point[0], ending_point[1])[0] == True:
+						time.sleep(0.005)
+					esp.send_command("0, 0, 0, motor stop")
+					end_time = time.pref_counter()
+					break
+	
+				# End of OC1 FSM #
 				time.sleep(0.005)
-			    end_time = time.pref_counter()
-			    esp.send_command("0, 0, 0, motor stop")
-
-                # End of OC1 FSM #
-		recorded_time = end_time - start_time
-                time.sleep(0.005)
-                    
-        elif run_OC2:
-            esp.send_command("OC2")
-            while run_OC2:
-                reply = esp_replyNprint()
-                if reply == "EOC2":
-                    run_OC2 = False
-                    break
-                # OC2 FSM #
-
-                # End of OC2 FSM #
-                time.sleep(0.005)
-                    
-        else:
-            # IDLE
-            reply = esp_replyNprint()
-            if reply == "ROC1":
-                reset_OC = True
-                run_OC1 = True
-                continue
-            elif reply == "ROC2":
-                reset_OC = True
-                run_OC2 = True
-                continue
-            time.sleep(0.05)
+				
+		elif run_OC2:
+			esp.send_command("OC2")
+			while run_OC2:
+				reply = esp_replyNprint()
+				if reply == "EOC2":
+					run_OC2 = False
+					break
+				# OC2 FSM #
+	
+				# End of OC2 FSM #
+				time.sleep(0.005)
+				
+		else:
+			# IDLE
+			recorded_time = end_time - start_time
+			reply = esp_replyNprint()
+			if reply == "ROC1":
+				reset_OC = True
+				run_OC1 = True
+				continue
+			elif reply == "ROC2":
+				reset_OC = True
+				run_OC2 = True
+				continue
+		time.sleep(0.05)
 
 except KeyboardInterrupt:
-    print("\nShutting down...")
-    esp.disconnect()
-    stop_vision_system()
-    time.sleep(0.5)
+	print("\nShutting down...")
+	esp.disconnect()
+	stop_vision_system()
+	time.sleep(0.5)
