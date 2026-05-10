@@ -123,7 +123,7 @@ try:
 			    continue
 		        #Wait turn
 		        elif state == WAIT_TURN_STATE:
-		            esp.send_command("10, 70, 100, wait turn")
+		            esp.send_command("10, 0, 100, wait turn")
 			    state = TURNING_STATE
 			    continue
 		        #Turn 
@@ -154,6 +154,7 @@ try:
 			    #Wait until the ending_point reach the wall in front of the robot
 			    while get_track_distance(ending_point[0], ending_point[1])[0] == True:
 				time.sleep(0.005)
+			    end_time = time.pref_counter()
 			    esp.send_command("0, 0, 0, motor stop")
 
                 # End of OC1 FSM #
