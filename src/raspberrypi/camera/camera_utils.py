@@ -54,14 +54,14 @@ WHITE_LOWER = RGB2HSV([150, 150, 150])
 WHITE_UPPER = RGB2HSV([255, 214, 216])
 
 # Get the center coordinates, width and height of a pillar with specific filter
-def get_pillar_center(mask, min_area = 3):
+def get_pillar_center(mask, min_area = 20):
 	mask = cv2.erode(mask, None, iterations=2)
 	mask = cv2.dilate(mask, None, iterations=2)
 	contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 	if contours:
 		largest_contour = max(contours, key=cv2.contourArea)
 		area = cv2.contourArea(largest_contour)
-		area = area // 1000
+		area = area // 100
 		if area > min_area:
 			x, y, w, h = cv2.boundingRect(largest_contour)
 			center_x = x + (w // 2)
@@ -70,14 +70,14 @@ def get_pillar_center(mask, min_area = 3):
 	return None
 
 # Get the center of mass coordinates of the largest white polygon
-def get_track_polygon(mask, min_area = 3):
+def get_track_polygon(mask, min_area = 20):
 	mask = cv2.erode(mask, None, iterations = 2)
 	mask = cv2.dilate(mask, None, iterations = 2)
 	contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 	if contours:
 		largest_contour = max(contours, key = cv2.contourArea)
 		area = cv2.contourArea(largest_contour)
-		area = area // 1000
+		area = area // 100
 		if area > min_area:
 			epsilon = 0.02 * cv2.arcLength(largest_contour, True)
 			polygon = cv2.approxPolyDP(largest_contour, epsilon, True)
@@ -114,13 +114,13 @@ def _scan_obstacle_thread():
 		red_mask = cv2.bitwise_or(mask_r1, mask_r2)
 		green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
 		
-		r_box = get_pillar_center(red_mask, min_area = 3)
-		g_box = get_pillar_center(green_mask, min_area = 3)
+		r_box = get_pillar_center(red_mask, min_area = 20)
+		g_box = get_pillar_center(green_mask, min_area = 20)
 		
 		largest = None
 		color = None
-		r_area = (r_box[2] * r_box[3]) // 1000 if r_box else 0
-		g_area = (g_box[2] * g_box[3]) // 1000 if g_box else 0
+		r_area = (r_box[2] * r_box[3]) // 100 if r_box else 0
+		g_area = (g_box[2] * g_box[3]) // 100 if g_box else 0
 		
 		if r_area > 0 or g_area > 0:
 			if r_area > g_area:
@@ -150,7 +150,7 @@ def _scan_parkinglot_thread():
 			hsv = _shared_hsv.copy()
 		    
 		magenta_mask = cv2.inRange(hsv, MAGENTA_LOWER, MAGENTA_UPPER)
-		m_box = get_pillar_center(magenta_mask, min_area = 3)
+		m_box = get_pillar_center(magenta_mask, min_area = 20)
 		with _data_lock:
 			_display_masks["magenta"] = magenta_mask
 			if m_box:
@@ -170,7 +170,7 @@ def _scan_track_thread():
 		    
 		raw_white_mask = cv2.inRange(hsv, WHITE_LOWER, WHITE_UPPER)
 		white_mask = isolate_largest_blob(raw_white_mask)
-		w_poly, w_center = get_track_polygon(white_mask, min_area = 3)
+		w_poly, w_center = get_track_polygon(white_mask, min_area = 20)
 		
 		with _data_lock:
 			_display_masks["white"] = white_mask
@@ -215,7 +215,7 @@ def _vision_loop():
 			tl_x, tl_y = int(x - w/2), int(y - h/2)
 			c = (0, 0, 255) if obs["color"] == "RED" else (0, 255, 0)
 			cv2.rectangle(display_frame, (tl_x, tl_y), (tl_x+w, tl_y+h), c, 2)
-			cv2.putText(display_frame, f"{obs['color']} ({x}, {y}), A: {w * h // 1000}", (tl_x, tl_y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c, 2)
+			cv2.putText(display_frame, f"{obs['color']} ({x}, {y}), A: {w * h // 100}", (tl_x, tl_y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c, 2)
 	
 		if mag["center_x"] != 0:
 			x, y, w, h = mag["center_x"], mag["center_y"], mag["width"], mag["height"]
