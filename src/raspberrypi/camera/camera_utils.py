@@ -50,8 +50,14 @@ GREEN_UPPER = RGB2HSV([0, 255, 255])
 MAGENTA_LOWER = RGB2HSV([47, 40, 50])
 MAGENTA_UPPER = RGB2HSV([255, 0, 85])
 
-WHITE_LOWER = RGB2HSV([150, 150, 150])
+WHITE_LOWER = RGB2HSV([165, 165, 165])
 WHITE_UPPER = RGB2HSV([255, 214, 216])
+
+BLUE_LOWER = RGB2HSV([40, 47, 50]) # np.array([90, 40, 40]) # RGB2HSV([40, 47, 50])
+BLUE_UPPER = RGB2HSV([95, 0, 255]) # np.array([140, 255, 255]) # RGB2HSV([95, 0, 255]) 
+
+ORANGE_LOWER = np.array([0, 70, 70])
+ORANGE_UPPER = np.array([35, 255, 255])
 
 # Get the center coordinates, width and height of a pillar with specific filter
 def get_pillar_center(mask, min_area = 20):
@@ -79,7 +85,7 @@ def get_track_polygon(mask, min_area = 20):
 		area = cv2.contourArea(largest_contour)
 		area = area // 100
 		if area > min_area:
-			epsilon = 0.02 * cv2.arcLength(largest_contour, True)
+			epsilon = 0.005 * cv2.arcLength(largest_contour, True)
 			polygon = cv2.approxPolyDP(largest_contour, epsilon, True)
 			M = cv2.moments(polygon)
 			if M["m00"] != 0:
@@ -169,11 +175,24 @@ def _scan_track_thread():
 			hsv = _shared_hsv.copy()
 		    
 		raw_white_mask = cv2.inRange(hsv, WHITE_LOWER, WHITE_UPPER)
-		white_mask = isolate_largest_blob(raw_white_mask)
-		w_poly, w_center = get_track_polygon(white_mask, min_area = 20)
+		
+		mask_r1 = cv2.inRange(hsv, RED_LOWER1, RED_UPPER1)
+		mask_r2 = cv2.inRange(hsv, RED_LOWER2, RED_UPPER2)
+		red_mask = cv2.bitwise_or(mask_r1, mask_r2)
+		
+		green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
+		blue_mask = cv2.inRange(hsv, BLUE_LOWER, BLUE_UPPER)
+		orange_mask = cv2.inRange(hsv, ORANGE_LOWER, ORANGE_UPPER)
+		
+		combined_mask = raw_white_mask
+		for m in [red_mask, green_mask, blue_mask, orange_mask]:
+			combined_mask = cv2.bitwise_or(combined_mask, m)
+			
+		track_mask = isolate_largest_blob(combined_mask)
+		w_poly, w_center = get_track_polygon(track_mask, min_area = 20)
 		
 		with _data_lock:
-			_display_masks["white"] = white_mask
+			_display_masks["white"] = track_mask
 			if w_poly is not None:
 				track_data.update({"polygon": w_poly, "center_x": w_center[0], "center_y": w_center[1]})
 			else:
