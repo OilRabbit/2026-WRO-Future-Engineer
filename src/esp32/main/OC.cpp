@@ -10,180 +10,59 @@ long OC_endtime = 0;
 static inline void safeSuspend(TaskHandle_t h){ if (h) vTaskSuspend(h); }
 static inline void safeResume(TaskHandle_t h){ if (h) vTaskResume(h); }
 
-// /**
-//  * @brief Function for OC1 using ToF sensors over the run
-//  * 
-//  * @param right_ang; double; the value of an "right angle" for the IMU (if the value returned by the IMU is not consistent)
-//  * @param dist_threshold; int; the threshold that the ToFs consider as a turnable corner (in mm)
-//  * @param power; int; the power of the driving motor (0 ~ -100)
-//  * 
-//  */
-// void OC1_tof(double right_ang, int dist_threshold, int power){
-//   // Disable unecessary threads for efficiency
-//   // Pixy thread cannot be disabled as it is sharing the same I2C address with the IMU
-//   safeSuspend(blinkledThread);
+int current_target_speed = 0;
+int current_target_steering = 0;
+int current_target_distance = -1; 
+bool is_moving_distance = false;
 
-//   // Variables required for OC1
-//   static OC1_STATES state = DETECT_STATE;     
-//   static OC1_STATES prev_state = DETECT_STATE;
-//   static bool end_game = false;           
-//   static double tar_ang = 0;              
-//   static bool is_anticlockwise = false;   
-//   static int num_turn = 0;                
-//   static int innerWall_dist = 15;        
-//   static long dash_time = 0;
-//   static long dash_timeZero = 0;
-//   float imu_kp = 2;
-//   String OC1_text = String("oc1:");
-//   float start_sector_dist = 0;
-//   int last_encoder = 0;
-
-//   // Initializing variables for this function
-//   if (reset_OC1){
-//     state = DETECT_STATE;
-//     prev_state = DETECT_STATE;
-//     tar_ang = 0;
-//     is_anticlockwise = false;
-//     num_turn = 0;
-//     innerWall_dist = 15;
-//     steering_percentage = 0;
-//     dash_time = 0;
-//     dash_timeZero = 0;
-//     start_sector_dist = 0;
-//     end_game = false;
-//     OC1_starttime = internalClock.read();
-//     imu_resetYaw();
-//     reset_OC1 = false;
-//     last_encoder = 0;
-//   }
-
-//   if (!end_game){
-//     // Constant speed for the whole run
-//     motor_move(power);
-
-//     // Finite State Machine of this funciton
-//     switch(state){
-//       // State to detect for a turnable corner
-//       case DETECT_STATE:
-//         Serial.println("DETECT_STATE");
-//         Serial.print("num_turn = ");
-//         Serial.println(num_turn);
-//         // The direction of the run will be determined in the first sector
-//         if (num_turn == 0) {
-//           if (dist_t1 > dist_threshold){
-//             is_anticlockwise = true;
-//             safeSuspend(ToF2Thread);
-//             prev_state = DETECT_STATE;
-//             state = WAIT_TURN_STATE;
-//             break;
-//           } else if (dist_t2 > dist_threshold){
-//             is_anticlockwise = false;
-//             safeSuspend(ToF1Thread);
-//             prev_state = DETECT_STATE;
-//             state = WAIT_TURN_STATE;
-//             break;
-//           } else {
-//             steering_percentage = -(imu_yaw - tar_ang) * imu_kp;
-//           }
-//         } else {
-//           if (is_anticlockwise){
-//             if (dist_t1 > dist_threshold){
-//               prev_state = DETECT_STATE;
-//               state = WAIT_TURN_STATE;
-//               break;
-//             } else {
-//               steering_percentage = -(imu_yaw - tar_ang) * imu_kp;
-//             }
-//           } else {
-//             if (dist_t2 > dist_threshold){
-//               prev_state = DETECT_STATE;
-//               state = WAIT_TURN_STATE;
-//               break;
-//             } else {
-//               steering_percentage = -(imu_yaw - tar_ang) * imu_kp;
-//             }
-//           }
-//         }
-//         break;
-
-//       // Calculate the target yaw angle for the IMU
-//       case WAIT_TURN_STATE:
-//         Serial.println("WAIT_TURN_STATE");
-//         tar_ang += (is_anticlockwise == true) ? -right_ang : right_ang;
-//         num_turn++;
-//         if (num_turn == 5) start_sector_dist = abs(MOTOR_ENCODER_COUNT);
-//         prev_state = WAIT_TURN_STATE;
-//         state = TURNING_STATE;
-//         break;
-      
-//       // Turn to the target angle
-//       case TURNING_STATE:
-//         Serial.println("TURNING_STATE");
-//         // if (num_turn == 4) reset_encoder();
-//         if ((abs(tar_ang - imu_yaw) > 16) && (abs(tar_ang) > abs(imu_yaw))){
-//           steering_percentage = (tar_ang > 0) ? 100 : -100;
-//           dash_timeZero = internalClock.read();
-//         } else {
-//           steering_percentage = 0;
-//           prev_state = TURNING_STATE;
-//           state = DASH_AFTER_TURNING_STATE;
-//           dash_time = 800;
-//           dash_timeZero = internalClock.read();
-//           if (num_turn == 4) reset_encoder();
-//           last_encoder = MOTOR_ENCODER_COUNT;
-//           break;
-//         }
-//         break;
-      
-//       // Dash forward for a certain amount of time to pervent false detection by the ToF
-//       case DASH_AFTER_TURNING_STATE:
-//         Serial.println("DASH_AFTER_TURNING_STATE");
-//         if (num_turn >= 12){
-//           prev_state = DASH_AFTER_TURNING_STATE;
-//           reset_encoder();
-//           state = ENDING_STATE;
-//           break;
-//         } else {
-//           if (is_anticlockwise){
-//             if ((internalClock.read() - dash_timeZero) < dash_time){
-//               steering_percentage = -(imu_yaw - tar_ang) * imu_kp;
-//             } else {
-//               prev_state = DASH_AFTER_TURNING_STATE;
-//               state = DETECT_STATE;
-//               break;
-//             }
-//           } else {
-//             if ((internalClock.read() - dash_timeZero) < dash_time){
-//               steering_percentage = -(imu_yaw - tar_ang) * imu_kp;
-//             } else {
-//               prev_state = DASH_AFTER_TURNING_STATE;
-//               state = DETECT_STATE;
-//               break;
-//             }
-//           }
-//         }
-//         break;
-
-//       // End the run by braking the car
-//       case ENDING_STATE:
-//         Serial.println("ENDING_STATE");
-//         if (abs(MOTOR_ENCODER_COUNT) < 90){ //(start_sector_dist + 40) / 2
-//           steering_percentage = -(imu_yaw - tar_ang) * imu_kp;
-//         } else {
-//           motor_stop(BRAKE);
-//           steering_percentage = 0;
-//           safeResume(blinkledThread);
-//           end_game = true;
-//           OC1_endtime = internalClock.read();
-//         }
-//         break;
-//     }
-//   }
-//   vTaskDelay(5 / portTICK_PERIOD_MS);
-// }
-
-void OC1_program(){
+void OC1_program() {
   String cmd = receiveNprint_msg(TFT_LEFT_CLN, 13, 2, TFT_WHITE, false);
+  
+  if (cmd.length() > 0 && cmd != "OC1" && cmd != "OC2") {
+    
+    int firstComma = cmd.indexOf(',');
+    int secondComma = cmd.indexOf(',', firstComma + 1);
+    int thirdComma = cmd.indexOf(',', secondComma + 1);
+
+    if (firstComma != -1 && secondComma != -1 && thirdComma != -1) {
+      String speedStr = cmd.substring(0, firstComma);
+      String steeringStr = cmd.substring(firstComma + 1, secondComma);
+      String distanceStr = cmd.substring(secondComma + 1, thirdComma);
+      
+      speedStr.trim();
+      steeringStr.trim();
+      distanceStr.trim();
+      
+      current_target_speed = speedStr.toInt();
+      current_target_steering = steeringStr.toInt();
+      current_target_distance = distanceStr.toInt();
+      
+      if (current_target_distance > 0) {
+        reset_encoder();
+        is_moving_distance = true;
+      } else {
+        is_moving_distance = false; 
+      }
+      
+    } else {
+      send_msg("X");
+    }
+  }
+  
+  steering_percentage = current_target_steering; 
+
+  if (is_moving_distance) {
+    if (abs(MOTOR_ENCODER_COUNT) < current_target_distance) {
+      motor_move(current_target_speed);
+    } else {
+      motor_move(0);
+      is_moving_distance = false; 
+      current_target_distance = -1;
+      // send_msg("DONE"); 
+    }
+  } else {
+    motor_move(current_target_speed);
+  }
 }
 
 void OC2_program(){

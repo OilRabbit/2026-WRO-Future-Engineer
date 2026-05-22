@@ -16,8 +16,7 @@
 extern TaskHandle_t blinkledThread;
 extern TaskHandle_t displayThread;
 extern TaskHandle_t OCThread;
-// extern TaskHandle_t IMUThread;
-// extern TaskHandle_t SteeringThread;
-// extern TaskHandle_t MotorEncThread;
+extern TaskHandle_t SteeringThread;
+extern TaskHandle_t MotorEncThread;
 
 #endif

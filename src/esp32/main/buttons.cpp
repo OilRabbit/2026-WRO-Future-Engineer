@@ -56,27 +56,9 @@ bool is_btn_bumped(TFT_BTNS btn){
 void showbtnState(TFT_COLUMN column, int line_number, int text_size, uint16_t text_colour = TFT_WHITE, bool clearDisplay = false){
   String btn_text = String("Bt1:") + (is_btn_pressed(TFT_BTN1) ? "Pre" : "Rel");
   if (is_btn_pressed(TFT_BTN3)){
-    imu_resetYaw();
     reset_encoder();
     tft.clear();
-    // steering_percentage = 100;
   } 
-  // else steering_percentage = -100;
-  // if (is_btn_bumped(TFT_BTN1)){
-  //   finished = false;
-  //   run = true;
-  // }
-  // if (run && !finished){
-  //   // Serial.println("hi");
-  //   finished = motor_degree_accel(1000, 300, 300, -20);
-  //   if (finished) {
-  //     run = false;
-  //     motor_stop(BRAKE);
-  //   }
-  // }
-  // static int nump = 0;
-  // nump += is_btn_bumped(TFT_BTN1);
-  // String btn_text = String("NumP:") + String(nump);
   if (column == TFT_LEFT_CLN){
     tft.clearln(TFT_LEFT_CLN, line_number);
     tft.displayLeftln(line_number, text_size, btn_text.c_str(), text_colour, false);
