@@ -4,7 +4,6 @@
 #include <Arduino.h>
 #include "steering.h"
 #include "Timer.h"
-#include "imu.h"
 #include "timestamp.h"
 #include <algorithm>
 #include "main.h"
