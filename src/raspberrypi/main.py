@@ -52,7 +52,7 @@ class States(Enum):
 	FIRST_SECTOR = 1 #Move forward until it knows the direction to run
 	WAIT_TURN_STATE = 2 #Move forward for fixed distance to get to the ideal point to turn
 	TURNING_STATE = 3 #Turn until it is parallel to the next path
-	DASH_AFTER_TURING_STATE = 4 #Move forward until it passed the corner sector
+	DASH_AFTER_TURNING_STATE = 4 #Move forward until it passed the corner sector
 	RUN_SECTOR_STATE = 5 #Move forward until is time to turn
 	LAST_RUN = 6 #Move forward to stop at the right place
 
@@ -120,10 +120,11 @@ try:
 					num_of_turn += 1
 					esp.send_command("10, 70, 200, turn")
 					state = States.DASH_AFTER_TURNING_STATE
+					print("turning state")
 					continue
 				
 				#Dash to pass the corner
-				elif state == States.DASH_AFTER_TURING_STATE:
+				elif state == States.DASH_AFTER_TURNING_STATE:
 					esp.send_command("10, 0, 100, go forward")
 					if num_of_turn == 12:
 						state = States.LAST_RUN
@@ -133,6 +134,7 @@ try:
 				
 				#Run sector and keep a certain distance from the inner barrier
 				elif state == States.RUN_SECTOR_STATE:
+					print("sector")
 					if (get_track_distance(track_right[0], track_right[1])[0] == True and is_clockwise) or (get_track_distance(track_left[0], track_left[1])[0] == True and not is_clockwise):
 						esp.send_command("10, 10, -1, move right")
 					elif (get_track_distance(track_left[0], track_left[1])[0] == False and is_clockwise) or (get_track_distance(track_right[0], track_right[1])[0] == False and not is_clockwise):
@@ -149,7 +151,7 @@ try:
 						time.sleep(0.005)
 						break
 					esp.send_command("0, 0, 0, motor stop")
-					end_time = time.pref_counter()
+					end_time = time.perf_counter()
 					break
 	
 				# End of OC1 FSM #
