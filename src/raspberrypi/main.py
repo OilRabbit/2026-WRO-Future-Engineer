@@ -2,7 +2,7 @@
 import time
 import datetime
 from esp_com.communication import ESP32Communicator
-from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system
+from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance
 from picamera2 import Picamera2 as picam2
 from enum import Enum
 
@@ -34,10 +34,9 @@ run_OC2 = False
 reset_OC = True
 num_of_turn = 0
 is_clockwise = True
-state
-start_time
-end_time
-recorded_time
+start_time = 0
+end_time = 0
+recorded_time = 0
 
 #Checkpoints (default as clockwise case)
 left_turning_point = [0, 180] #check direction
@@ -49,6 +48,7 @@ ending_point = [320, 100] #check if the robot is at the ideal point to end
 
 #States
 class States(Enum):
+	INIT = 0
 	FIRST_SECTOR = 1 #Move forward until it knows the direction to run
 	WAIT_TURN_STATE = 2 #Move forward for fixed distance to get to the ideal point to turn
 	TURNING_STATE = 3 #Turn until it is parallel to the next path
@@ -59,23 +59,24 @@ class States(Enum):
 # Function for receiving msg from ESP and print the message with timestamp
 def esp_replyNprint():
 	timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+	reply = esp.read_message()
 	if reply is not None:
 		timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 		print(f"{timestamp} ESP: {reply}")
 	return reply
 
+state = States.INIT
 try:
 	print("IDLE")
 	while True:
 		if reset_OC:
 			# Add anything you need to reset before each OC run below this line #
 			if run_OC1:
-				state = First_SECTOR
+				state = States.FIRST_SECTOR
 			# End of reset #
 			reset_OC = False
 			print("Resetted")
-			print("IDLE")
-			state = FIRST_SECTOR
+			# print("IDLE")
 			continue
 			
 		# TODO: add timer
@@ -86,6 +87,7 @@ try:
 				end_time = time.perf_counter()
 				reply = esp_replyNprint()
 				if reply == "EOC1":
+					print("EOC1")
 					run_OC1 = False
 					break
 				_, _, track = get_latest_data()
@@ -93,7 +95,8 @@ try:
 				# OC1 FSM
 				#Format eg: esp.send_command("<speed>, <streering percentage>, <distance(-1 when not needed)>, <what to do>")
 				#The first sector
-				if state == First_SECTOR:
+				if state == States.FIRST_SECTOR:
+					print("FIRST_SECTOR")
 					esp.send_command("10, 0, -1, go forward")
 					while get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
 						time.sleep(0.005)
@@ -102,43 +105,43 @@ try:
 						turning_point = left_turning_point
 						track_left = [0, 360]
 						track_right = [40, 360]
-						state = WAIT_TURN_STATE
+						state = States.WAIT_TURN_STATE
 					continue
 				
 				#Wait turn
-				elif state == WAIT_TURN_STATE:
+				elif state == States.WAIT_TURN_STATE:
 					esp.send_command("10, 0, 100, wait turn")
-					state = TURNING_STATE
+					state = States.TURNING_STATE
 					continue
 				
 				#Turn 
-				elif state == TURNING_STATE:
+				elif state == States.TURNING_STATE:
 					num_of_turn += 1
 					esp.send_command("10, 70, 200, turn")
-					state = DASH_AFTER_TURNING_STATE
+					state = States.DASH_AFTER_TURNING_STATE
 					continue
 				
 				#Dash to pass the corner
-				elif state == DASH_AFTER_TURING_STATE:
+				elif state == States.DASH_AFTER_TURING_STATE:
 					esp.send_command("10, 0, 100, go forward")
 					if num_of_turn == 12:
-						state = LAST_RUN
+						state = States.LAST_RUN
 					else:
-						state = RUN_SECTOR_STATE
+						state = States.RUN_SECTOR_STATE
 					continue
 				
 				#Run sector and keep a certain distance from the inner barrier
-				elif state == RUN_SECTOR_STATE:
+				elif state == States.RUN_SECTOR_STATE:
 					if (get_track_distance(track_right[0], track_right[1])[0] == True and is_clockwise) or (get_track_distance(track_left[0], track_left[1])[0] == True and not is_clockwise):
 						esp.send_command("10, 10, -1, move right")
 					elif (get_track_distance(track_left[0], track_left[1])[0] == False and is_clockwise) or (get_track_distance(track_right[0], track_right[1])[0] == False and not is_clockwise):
 						esp.send_command("10, 10, -1, move left")
 					if get_track_distance(turning_point[0], turning_point[1])[0] == True:
-						state = WAIT_TURN_STATE
+						state = States.WAIT_TURN_STATE
 					continue
 	
 				#Last forward to stop
-				elif state == LAST_RUN:
+				elif state == States.LAST_RUN:
 					esp.send_command("10, 0, -1, move forward")
 					#Wait until the ending_point reach the wall in front of the robot
 					while get_track_distance(ending_point[0], ending_point[1])[0] == True:
