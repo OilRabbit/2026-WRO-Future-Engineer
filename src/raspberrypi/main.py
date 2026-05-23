@@ -17,7 +17,7 @@ camera.configure(config)
 camera.start()
 print("Camera: Activated")
 
-start_vision_system(camera, False)
+start_vision_system(camera, True)
 
 live_streaming = False
 if live_streaming:
