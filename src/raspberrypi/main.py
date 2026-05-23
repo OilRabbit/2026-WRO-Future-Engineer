@@ -98,8 +98,9 @@ try:
 				if state == States.FIRST_SECTOR:
 					print("FIRST_SECTOR")
 					esp.send_command("10, 0, -1, go forward")
-					while get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
+					if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
 						time.sleep(0.005)
+						break
 					if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True:
 						is_clockwise = False
 						turning_point = left_turning_point
@@ -144,8 +145,9 @@ try:
 				elif state == States.LAST_RUN:
 					esp.send_command("10, 0, -1, move forward")
 					#Wait until the ending_point reach the wall in front of the robot
-					while get_track_distance(ending_point[0], ending_point[1])[0] == True:
+					if get_track_distance(ending_point[0], ending_point[1])[0] == True:
 						time.sleep(0.005)
+						break
 					esp.send_command("0, 0, 0, motor stop")
 					end_time = time.pref_counter()
 					break
