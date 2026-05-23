@@ -129,7 +129,7 @@ void reset_encoder() {
 void motor_move(int speed_percentage) {
   if (speed_percentage > 100)  speed_percentage = 100;
   if (speed_percentage < -100) speed_percentage = -100;
-  apply_pwm_dir(speed_percentage);
+  apply_pwm_dir(-speed_percentage);
 }
 
 /**

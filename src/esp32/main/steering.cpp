@@ -29,9 +29,9 @@ void reset_steering(){
 void steeringloop(void* parameters){
   while(1){
     int servo_angle = 0;
-    if (steering_percentage > 100) servo_angle = int(91 + MAX_STEERING_ANGLE);
-    else if (steering_percentage < -100) servo_angle = int(91 - MAX_STEERING_ANGLE);
-    else servo_angle = int(91 + MAX_STEERING_ANGLE * steering_percentage / 100);
+    if (steering_percentage > 100) servo_angle = int(95 + MAX_STEERING_ANGLE);
+    else if (steering_percentage < -100) servo_angle = int(95 - MAX_STEERING_ANGLE);
+    else servo_angle = int(95 + MAX_STEERING_ANGLE * steering_percentage / 100);
     steering_motor.write(servo_angle);
     vTaskDelay(5 / portTICK_PERIOD_MS);
   }
@@ -47,6 +47,8 @@ void steeringloop(void* parameters){
  */
 void showSteering(TFT_COLUMN column, int line_number, int text_size, uint16_t text_colour = TFT_WHITE, bool clearDisplay = false){
   String steering_text = "Str: " + String(int(steering_percentage)) + "%";
+  // int servo_data = steering_motor.read();
+  // String steering_text = "Str: " + String(servo_data);
   if (column == TFT_LEFT_CLN){
     tft.clearln(TFT_LEFT_CLN, line_number);
     tft.displayLeftln(line_number, text_size, steering_text.c_str(), text_colour, false);

@@ -57,7 +57,11 @@ void showbtnState(TFT_COLUMN column, int line_number, int text_size, uint16_t te
   if (is_btn_pressed(TFT_BTN3)){
     reset_encoder();
     tft.clear();
+    // steering_percentage = 100;
+    // motor_move(10);
   } 
+  // else steering_percentage = 0;
+  // motor_stop(BRAKE);
   if (column == TFT_LEFT_CLN){
     tft.clearln(TFT_LEFT_CLN, line_number);
     tft.displayLeftln(line_number, text_size, btn_text.c_str(), text_colour, false);

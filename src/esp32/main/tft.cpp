@@ -101,10 +101,9 @@ void displayData(void *parameters){
     // Put your display functions here. The first one MUST clear display, while those after that MUST NOT clear the display
     showInternalClock();
     showOCTime(TFT_LEFT_CLN, ln++, 2, TFT_WHITE, false);
-    // showbtnState(TFT_LEFT_CLN, ln++, 2, TFT_WHITE, false);
-    // showIMU(TFT_LEFT_CLN, ln++, 2, TFT_WHITE, false);
-    // showSteering(TFT_LEFT_CLN, ln++, 2, TFT_WHITE, false);
-    // showEncoder(TFT_LEFT_CLN, ln++, 2, TFT_WHITE, false);
+    showbtnState(TFT_LEFT_CLN, ln++, 2, TFT_WHITE, false);
+    showSteering(TFT_LEFT_CLN, ln++, 2, TFT_WHITE, false);
+    showEncoder(TFT_LEFT_CLN, ln++, 2, TFT_WHITE, false);
     vTaskDelay(5 / portTICK_PERIOD_MS);
   }
 }
