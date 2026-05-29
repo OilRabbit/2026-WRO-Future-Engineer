@@ -97,7 +97,9 @@ try:
 				#The first sector
 				if state == States.FIRST_SECTOR:
 					print("FIRST_SECTOR")
-					esp.send_command("10, 0, -1, go forward")
+					#esp.send_command("5, 0, -1, move forward")
+					print(track["center_x"])
+					continue
 					if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
 						time.sleep(0.005)
 						break
