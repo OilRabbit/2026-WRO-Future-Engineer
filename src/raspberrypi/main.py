@@ -20,7 +20,7 @@ print("Camera: Activated")
 
 start_vision_system(camera, True)
 
-live_streaming = False
+live_streaming = True
 if live_streaming:
 	print("Streaming: Activated")
 	start_web_server(host='0.0.0.0', port=5000)
@@ -42,12 +42,13 @@ recorded_time = 0
 #Checkpoints (default as clockwise case)
 angle = 0 #steering percentage
 turn_indi = [320, 90] #check when to turn
+sector_indi = [480,90] #check when is sector
 left_turning_point = [0, 180] #check direction
 right_turning_point = [640, 180] #check direction
 turning_point = right_turning_point #check if the robot get to the position that should turn
 track_left = [600, 360] #check if the robot is getting left from the ideal track
 track_right = [640, 360] #check if the robot is getting right from the ideal track
-ending_point = [320, 120] #check if the robot is at the ideal point to end
+ending_point = [320, 180] #check if the robot is at the ideal point to end
 
 #States
 class States(Enum):
@@ -78,6 +79,7 @@ try:
 				angle = 0
 				num_of_turn = 0
 				state = States.FIRST_SECTOR
+				print("FIRST_SECTOR") 
 			# End of reset #
 			reset_OC = False
 			print("Resetted")
@@ -101,13 +103,16 @@ try:
 				#Format eg: esp.send_command("<speed>, <streering percentage>, <distance(-1 when not needed)>, <what to do>")
 				#The first sector
 				if state == States.FIRST_SECTOR:
-					print("FIRST_SECTOR")
+					#print("FIRST_SECTOR")
 					if track["center_x"] != 0:
 						angle = (track["center_x"]-320)/1.5
-					esp.send_command("10, " + str(angle) + ", -1, move forward")
-					#if get_track_distance(turn_indi[0], turn_indi[1])[0] == False:
-						#state = States.TURNING_STATE
-					time.sleep(0.075)
+					esp.send_command("15, " + str(angle) + ", -1, move forward")
+					if get_track_distance(turn_indi[0], turn_indi[1])[0] == False:
+						state = States.TURNING_STATE
+						num_of_turn += 1
+						print(num_of_turn)
+						print("turning state")
+					time.sleep(0.05)
 					continue
 
 					if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
@@ -129,15 +134,16 @@ try:
 				
 				#Turn 
 				elif state == States.TURNING_STATE:
-					print("turning state")
-					num_of_turn += 1
-					angle = (track["center_x"]-320)/1
-					esp.send_command("8, " + str(angle) +", -1, turn")
-					if get_track_distance(turn_indi[0], turn_indi[1])[0] == True:
+					angle = (track["center_x"]-320)/0.75
+					esp.send_command("10, " + str(angle) +", -1, turn")
+					if get_track_distance(sector_indi[0], sector_indi[1])[0] == True:
 						if num_of_turn == 12:
 							state = States.LAST_RUN
-						state = States.RUN_SECTOR_STATE
-					time.sleep(0.075)
+							print("last")
+						else:
+							state = States.RUN_SECTOR_STATE
+							print("sector")
+					time.sleep(0.05)
 					continue
 
 					esp.send_command("10, 70, 200, turn")
@@ -155,14 +161,16 @@ try:
 					continue
 				
 				#Run sector and keep a certain distance from the inner barrier
-				elif state == States.RUN_SECTOR_STATE:
-					print("sector")                    
+				elif state == States.RUN_SECTOR_STATE:                    
 					if track["center_x"] != 0:
 						angle = (track["center_x"]-320)/1.5
-					esp.send_command("10, " + str(angle) + ", -1, move forward")
+					esp.send_command("15, " + str(angle) + ", -1, move forward")
 					if get_track_distance(turn_indi[0], turn_indi[1])[0] == False:
 						state = States.TURNING_STATE
-					time.sleep(0.075)
+						num_of_turn += 1
+						print(num_of_turn)
+						print("turning")
+					time.sleep(0.05)
 					continue
 
 					if (get_track_distance(track_right[0], track_right[1])[0] == True and is_clockwise) or (get_track_distance(track_left[0], track_left[1])[0] == True and not is_clockwise):
@@ -175,19 +183,17 @@ try:
 	
 				#Last forward to stop
 				elif state == States.LAST_RUN:
-					print("last")
 					if track["center_x"] != 0:
 						angle = (track["center_x"]-320)/1.5
-					esp.send_command("10, " + str(angle) + ", -1, move forward")
-					time.sleep(0.075)
+					esp.send_command("15, " + str(angle) + ", -1, move forward")
+					time.sleep(0.05)
 					#Wait until the ending_point reach the wall in front of the robot
 					if get_track_distance(ending_point[0], ending_point[1])[0] == True:
-						time.sleep(0.005)
+						esp.send_command("0, 0, 0, motor stop")
+						end_time = time.perf_counter()
+						print(end_time)
 						break
-					esp.send_command("0, 0, 0, motor stop")
-					end_time = time.perf_counter()
-					break
-	
+
 				# End of OC1 FSM #
 				time.sleep(0.005)
 				
