@@ -43,7 +43,7 @@ recorded_time = 0
 angle = 0 #steering percentage
 turn_indi_1 = [320, 60] #check when to turn
 turn_indi_2 = [320, 80] #check when to turn
-sector_indi = [320, 40] #check when is sector
+sector_indi = [320, 30] #check when is sector
 left_turning_point = [0, 180] #check direction
 right_turning_point = [640, 180] #check direction
 turning_point = right_turning_point #check if the robot get to the position that should turn
@@ -106,7 +106,9 @@ try:
 				if state == States.FIRST_SECTOR:
 					#print("FIRST_SECTOR")
 					if track["center_x"] != 0:
-						angle = (track["center_x"]-320)*abs(track["center_x"]-320)/60
+						angle_temp = (track["center_x"]-320)*abs(track["center_x"]-320)/60
+						if angle_temp < 8 and angle_temp > -8:
+							angle = angle_temp
 					esp.send_command("10, " + str(angle) + ", -1, move forward")
 					time.sleep(0.05)
 					if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
@@ -116,6 +118,7 @@ try:
 							num_of_turn += 1
 							print(num_of_turn)
 							print("turning state")
+
 					continue
 
 					if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
@@ -139,14 +142,20 @@ try:
 				elif state == States.TURNING_STATE:
 					angle = (track["center_x"]-320)/0.4
 					esp.send_command("8, " + str(angle) +", -1, turn")
-					time.sleep(0.05)
+					print(angle)
 					if get_track_distance(sector_indi[0], sector_indi[1])[0] == True:
+						buffer = angle/5
+						for i in range (4):
+							angle -= buffer
+							esp.send_command("8, " + str(angle) +", -1, turn")
+							time.sleep(0.05)
 						if num_of_turn == 12:
 							state = States.LAST_RUN
 							print("last")
 						else:
 							state = States.RUN_SECTOR_STATE
 							print("sector")
+					time.sleep(0.05)
 					continue
 
 					esp.send_command("10, 70, 200, turn")
@@ -166,13 +175,15 @@ try:
 				#Run sector and keep a certain distance from the inner barrier
 				elif state == States.RUN_SECTOR_STATE:                    
 					if track["center_x"] != 0:
-						angle = (track["center_x"]-320)*abs(track["center_x"]-320)/60
+						angle_temp = (track["center_x"]-320)*abs(track["center_x"]-320)/60
+						if angle_temp < 8 and angle_temp > -8:
+							angle = angle_temp
 					esp.send_command("10, " + str(angle) + ", -1, move forward")
+					print(angle)
 					time.sleep(0.05)
 					if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
 						time.sleep(0.066)
-						if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
-							print(track["center_x"])
+						if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0: 
 							state = States.TURNING_STATE
 							num_of_turn += 1
 							print(num_of_turn)
@@ -189,6 +200,7 @@ try:
 	
 				#Last forward to stop
 				elif state == States.LAST_RUN:
+					time.sleep(0.5)
 					esp.send_command("0, 0, 0,motor stop")
 					break
 					if track["center_x"] != 0:
