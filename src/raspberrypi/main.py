@@ -41,14 +41,14 @@ recorded_time = 0
 
 #Checkpoints (default as clockwise case)
 angle = 0 #steering percentage
-turn_indi_1 = [320, 60] #check when to turn
-turn_indi_2 = [320, 80] #check when to turn
-sector_indi = [320, 30] #check when is sector
-left_turning_point = [0, 180] #check direction
-right_turning_point = [640, 180] #check direction
+turn_indi_1 = [320, 40] #check when to turn
+turn_indi_2 = [320, 60] #check when to turn
+sector_indi = [320, 60] #check when is sector
+left_turning_point = [30, 180] #check direction
+right_turning_point = [610, 180] #check direction
 turning_point = right_turning_point #check if the robot get to the position that should turn
-track_left = [600, 360] #check if the robot is getting left from the ideal track
-track_right = [640, 360] #check if the robot is getting right from the ideal track
+track_left = [[30, 180], [580, 180]] #check if the robot is getting left from the ideal track
+track_right = [[60, 180], [610, 180]] #check if the robot is getting right from the ideal track
 ending_point = [320, 30] #check if the robot is at the ideal point to end
 
 #States
@@ -79,6 +79,8 @@ try:
 			if run_OC1:
 				angle = 0
 				num_of_turn = 0
+				is_clockwise = True
+				turning_point = right_turning_point
 				state = States.FIRST_SECTOR
 				print("FIRST_SECTOR") 
 			# End of reset #
@@ -105,97 +107,104 @@ try:
 				#The first sector
 				if state == States.FIRST_SECTOR:
 					#print("FIRST_SECTOR")
-					if track["center_x"] != 0:
-						angle_temp = (track["center_x"]-320)*abs(track["center_x"]-320)/60
-						if angle_temp < 8 and angle_temp > -8:
-							angle = angle_temp
-					esp.send_command("10, " + str(angle) + ", -1, move forward")
-					time.sleep(0.05)
-					if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
-						time.sleep(0.066)
-						if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
-							state = States.TURNING_STATE
-							num_of_turn += 1
-							print(num_of_turn)
-							print("turning state")
+					#if track["center_x"] != 0:
+						#angle_temp = (track["center_x"]-320)*abs(track["center_x"]-320)/60
+						#if angle_temp < 10 and angle_temp > -10:
+							#angle = angle_temp
+					#esp.send_command("8, " + str(angle) + ", -1, move forward")
+					#time.sleep(0.05)
+					#if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
+						#time.sleep(0.066)
+						#if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
+							#state = States.TURNING_STATE
+							#num_of_turn += 1
+							#print(num_of_turn)
+							#print("turning state")
 
-					continue
+					#continue
 
-					if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
-						time.sleep(0.005)
-						break
-					if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True:
-						is_clockwise = False
-						turning_point = left_turning_point
-						track_left = [0, 360]
-						track_right = [40, 360]
+					esp.send_command("8, 0, -1, move forward")
+					if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False:
+						if track["center_x"] < 320 :
+							is_clockwise = False
+							turning_point = left_turning_point
+							print(is_clockwise)
 						state = States.WAIT_TURN_STATE
+						print("wait")
 					continue
 				
 				#Wait turn
 				elif state == States.WAIT_TURN_STATE:
-					esp.send_command("10, 0, 100, wait turn")
-					state = States.TURNING_STATE
+					esp.send_command("8, 0, -1, wait turn")
+					if get_track_distance(turning_point[0], turning_point[1])[0] == True:
+						state = States.TURNING_STATE
+						num_of_turn += 1
+						print(num_of_turn)
+						print("turning")
 					continue
 				
 				#Turn 
 				elif state == States.TURNING_STATE:
-					angle = (track["center_x"]-320)/0.4
-					esp.send_command("8, " + str(angle) +", -1, turn")
-					print(angle)
-					if get_track_distance(sector_indi[0], sector_indi[1])[0] == True:
-						buffer = angle/5
-						for i in range (4):
-							angle -= buffer
-							esp.send_command("8, " + str(angle) +", -1, turn")
-							time.sleep(0.05)
-						if num_of_turn == 12:
-							state = States.LAST_RUN
-							print("last")
-						else:
-							state = States.RUN_SECTOR_STATE
-							print("sector")
-					time.sleep(0.05)
-					continue
+					#angle = (track["center_x"]-320)/0.4
+					#esp.send_command("8, " + str(angle) +", -1, turn")
+					#print(angle)
+					#if get_track_distance(sector_indi[0], sector_indi[1])[0] == True:
+						#buffer = angle/5
+						#for i in range (4):
+							#angle -= buffer
+							#esp.send_command("8, " + str(angle) +", -1, turn")
+							#time.sleep(0.05)
+						#if num_of_turn == 12:
+							#state = States.LAST_RUN
+							#print("last")
+						#else:
+							#state = States.RUN_SECTOR_STATE
+							#print("sector")
+					#time.sleep(0.05)
+					#continue
 
-					esp.send_command("10, 70, 200, turn")
+					esp.send_command("8, " + str(is_clockwise*160-80) + ", 200, turn")
 					state = States.DASH_AFTER_TURNING_STATE
-					print("turning state")
+					print("after")
 					continue
 				
 				#Dash to pass the corner
 				elif state == States.DASH_AFTER_TURNING_STATE:
-					esp.send_command("10, 0, 100, go forward")
+					esp.send_command("8, 0, 100, go forward")
 					if num_of_turn == 12:
 						state = States.LAST_RUN
+						print("last")
 					else:
 						state = States.RUN_SECTOR_STATE
+						print("sector")
 					continue
 				
 				#Run sector and keep a certain distance from the inner barrier
 				elif state == States.RUN_SECTOR_STATE:                    
-					if track["center_x"] != 0:
-						angle_temp = (track["center_x"]-320)*abs(track["center_x"]-320)/60
-						if angle_temp < 8 and angle_temp > -8:
-							angle = angle_temp
-					esp.send_command("10, " + str(angle) + ", -1, move forward")
-					print(angle)
-					time.sleep(0.05)
-					if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
-						time.sleep(0.066)
-						if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0: 
-							state = States.TURNING_STATE
-							num_of_turn += 1
-							print(num_of_turn)
-							print("turning")
-					continue
+					#if track["center_x"] != 0:
+						#angle_temp = (track["center_x"]-320)*abs(track["center_x"]-320)/60
+						#if angle_temp < 10 and angle_temp > -10:
+							#angle = angle_temp
+					#esp.send_command("8, " + str(angle) + ", -1, move forward")
+					#print(angle)
+					#time.sleep(0.05)
+					#if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
+						#time.sleep(0.066)
+						#if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0: 
+							#state = States.TURNING_STATE
+							#num_of_turn += 1
+							#print(num_of_turn)
+							#print("turning")
+					#continue
 
-					if (get_track_distance(track_right[0], track_right[1])[0] == True and is_clockwise) or (get_track_distance(track_left[0], track_left[1])[0] == True and not is_clockwise):
-						esp.send_command("10, 10, -1, move right")
-					elif (get_track_distance(track_left[0], track_left[1])[0] == False and is_clockwise) or (get_track_distance(track_right[0], track_right[1])[0] == False and not is_clockwise):
-						esp.send_command("10, 10, -1, move left")
-					if get_track_distance(turning_point[0], turning_point[1])[0] == True:
+					esp.send_command("8, 0, -1, go forward")
+					if get_track_distance(track_right[is_clockwise][0], track_right[is_clockwise][1])[0] == is_clockwise:
+						esp.send_command("8, 10, -1, move right")
+					elif get_track_distance(track_left[is_clockwise][0], track_left[is_clockwise][1])[0] != is_clockwise:
+						esp.send_command("8, -10, -1, move left")
+					if get_track_distance(turning_point[0], turning_point[1])[0] == True and get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False:
 						state = States.WAIT_TURN_STATE
+						print("wait")
 					continue
 	
 				#Last forward to stop
