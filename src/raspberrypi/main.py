@@ -1,4 +1,3 @@
-# testing
 import time
 import datetime
 import math
