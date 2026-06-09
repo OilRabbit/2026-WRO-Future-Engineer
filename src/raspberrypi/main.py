@@ -40,8 +40,8 @@ recorded_time = 0
 
 #Checkpoints (default as clockwise case)
 angle = 0 #steering percentage
-turn_indi_1 = [320, 50] #check when to turn
-turn_indi_2 = [320, 70] #check when to turn
+turn_indi_1 = [320, 30] #check when to turn
+turn_indi_2 = [320, 60] #check when to turn
 sector_indi = [320, 50] #check when is sector
 turn_time = 0
 
@@ -116,8 +116,11 @@ try:
 					esp.send_command("12, " + str(angle) + ", -1, move forward")
 					time.sleep(0.025)
 					if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
-						time.sleep(0.03)
+						time.sleep(0.033)
 						if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
+							if track["center_x"] < 320:
+								is_clockwise = False
+							print(is_clockwise)
 							state = States.TURNING_STATE
 							num_of_turn += 1
 							print(num_of_turn)
@@ -148,10 +151,10 @@ try:
 				
 				#Turn 
 				elif state == States.TURNING_STATE:
-					angle = (track["center_x"]-320)/0.5
+					angle = (track["center_x"]-320)/0.4
 					if angle > 100:
 						angle = 100
-					esp.send_command("10, " + str(angle) +", -1, turn")
+					esp.send_command("8, " + str(angle) +", -1, turn")
 					print(angle)
 					if get_track_distance(sector_indi[0], sector_indi[1])[0] == True:
 						if turn_time <= 0.3:
@@ -205,9 +208,9 @@ try:
 					esp.send_command("12, " + str(angle) + ", -1, move forward")
 					print(angle)
 					time.sleep(0.025)
-					if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
-						time.sleep(0.03)
-						if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0: 
+					if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True:
+						time.sleep(0.033)
+						if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True: 
 							state = States.TURNING_STATE
 							num_of_turn += 1
 							print(num_of_turn)
