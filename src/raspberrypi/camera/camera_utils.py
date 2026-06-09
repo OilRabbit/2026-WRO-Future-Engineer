@@ -354,6 +354,7 @@ if __name__ == "__main__":
 	config = camera.create_preview_configuration(main={"size": (640, 360), "format": "BGR888"})
 	camera.configure(config)
 	camera.start()
+	print(camera.camera_configuration)
 	print("Camera: Activated")
 	
 	start_vision_system(camera, False)
