@@ -43,7 +43,7 @@ recorded_time = 0
 angle = 0 #steering percentage
 turn_indi_1 = [320, 75] #check when to turn
 turn_indi_2 = [320, 105] #check when to turn
-sector_indi = [[280, 70], [360, 70]] #check when is sector
+sector_indi = [[270, 75], [370, 75]] #check when is sector
 turn_time = 0
 
 front_turning_point = [320, 70]
@@ -111,8 +111,8 @@ try:
 				#The first sector
 				if state == States.FIRST_SECTOR:
 					if track["center_x"] != 0:
-						angle_temp = (track["center_x"]-310)*abs(track["center_x"]-310)/150
-						if angle_temp < 60 and angle_temp > -60:
+						angle_temp = (track["center_x"]-310)*abs(track["center_x"]-310)/100
+						if angle_temp < 90 and angle_temp > -90:
 							angle = angle_temp
 					esp.send_command("12, " + str(angle) + ", -1, move forward")
 					time.sleep(0.025)
@@ -206,8 +206,8 @@ try:
 				#Run sector and keep a certain distance from the inner barrier
 				elif state == States.RUN_SECTOR_STATE:                    
 					if track["center_x"] != 0:
-						angle_temp = (track["center_x"]-310)*abs(track["center_x"]-310)/150
-						if angle_temp < 60 and angle_temp > -60:
+						angle_temp = (track["center_x"]-310)*abs(track["center_x"]-310)/200
+						if angle_temp < 50 and angle_temp > -50:
 							angle = angle_temp
 					esp.send_command("12, " + str(angle) + ", -1, move forward")
 					time.sleep(0.025)
