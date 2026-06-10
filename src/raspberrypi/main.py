@@ -110,7 +110,7 @@ try:
 				#The first sector
 				if state == States.FIRST_SECTOR:
 					if track["center_x"] != 0:
-						angle_temp = (track["center_x"]-300)*abs(track["center_x"]-300)/80
+						angle_temp = (track["center_x"]-310)*abs(track["center_x"]-310)/80
 						if angle_temp < 20 and angle_temp > -20:
 							angle = angle_temp
 					esp.send_command("12, " + str(angle) + ", -1, move forward")
@@ -152,7 +152,7 @@ try:
 				
 				#Turn 
 				elif state == States.TURNING_STATE:
-					angle = (track["center_x"]-300)/0.5
+					angle = (track["center_x"]-310)/0.5
 					if angle > 100:
 						angle = 100
 					esp.send_command("12, " + str(angle) +", -1, turn")
@@ -203,7 +203,7 @@ try:
 				#Run sector and keep a certain distance from the inner barrier
 				elif state == States.RUN_SECTOR_STATE:                    
 					if track["center_x"] != 0:
-						angle_temp = (track["center_x"]-300)*abs(track["center_x"]-300)/80
+						angle_temp = (track["center_x"]-310)*abs(track["center_x"]-310)/80
 						if angle_temp < 20 and angle_temp > -20:
 							angle = angle_temp
 					esp.send_command("12, " + str(angle) + ", -1, move forward")
