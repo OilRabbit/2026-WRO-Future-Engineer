@@ -351,9 +351,14 @@ if __name__ == "__main__":
 	from picamera2 import Picamera2 as picam2
 	print("=======Initializing=======")
 	camera = picam2()
-	config = camera.create_preview_configuration(main={"size": (640, 360), "format": "BGR888"})
+	
+	full_sensor_res = camera.sensor_resolution
+	
+	config = camera.create_video_configuration(main={"size": (640, 360), "format": "BGR888"}, sensor={"output_size": full_sensor_res})
+	
 	camera.configure(config)
 	camera.start()
+	
 	print(camera.camera_configuration)
 	print("Camera: Activated")
 	
@@ -367,18 +372,16 @@ if __name__ == "__main__":
 		print("Streaming: Not streaming")
 	
 	print("=======Initialized=======")
-    
+	
 	try:
 		while True:
 			obstacle, parking, track = get_latest_data()
 			if obstacle["color"] == "RED":
-				print("red")
 				pass
 			elif track["center_x"] != 0:
-				print("track = {}".format(track["center_x"]))
 				pass
 			time.sleep(0.02)
-    
+	
 	except KeyboardInterrupt:
 		print("\nShutting down...")
 		stop_vision_system()
