@@ -39,7 +39,7 @@ def RGB2HSV(rgb_list):
 	v = c_max * 255
 	return np.array([h, s, v])
 
-RED_LOWER1 = RGB2HSV([41, 25 , 25])
+RED_LOWER1 = RGB2HSV([80, 5 , 5])
 RED_UPPER1 = RGB2HSV([255, 85, 0])
 RED_LOWER2 = RGB2HSV([41, 25, 30])
 RED_UPPER2 = RGB2HSV([255, 0, 4])
@@ -148,7 +148,7 @@ def _scan_obstacle_thread():
 # Thread function for scanning the parking lot
 def _scan_parkinglot_thread():
 	global _shared_hsv, parkinglot_data, _display_masks
-	while True:
+	while Tru4:
 		with _hsv_lock:
 			if _shared_hsv is None:
 				time.sleep(0.01)

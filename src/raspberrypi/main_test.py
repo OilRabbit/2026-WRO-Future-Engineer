@@ -83,80 +83,79 @@ def send_command_logged(cmd_str):
                 print(f"[ESP_OUT] Sent Command: {cmd_str}")
                 last_action_logged = cmd_str
 
-def calculate_oc2_steering_bias(track_data, obstacle_data, current_angle):
+# ======================================================================
+# METHOD 1: CRITICAL HIERARCHICAL BUMPER PERCEPTION ENGINE
+# ======================================================================
+def calculate_oc2_steering_bias(track_data, obstacle_data, current_angle, current_state, clockwise_mode):
+        """
+        Enforces a strict priority hierarchy:
+        1. Corner State Lock (Absolute Highest)
+        2. Critical Wall Crash Zone (Overrides Pillars)
+        3. Thickened Wall Hazard Zone (Overrides Pillars)
+        4. Pillar/Obstacle Avoidance Layer (Only runs when boundaries are safe)
+        """
+        MAX_EMERGENCY_STEER = 85.0 
+        
+        # PRIORITY 1: FORCE THE CORNER DIRECTION IMMEDIATELY IF CORNER STATE IS ENGAGED
+        if current_state == States.TURNING_STATE:
+                if clockwise_mode:
+                        print("[DIRECTION_LOCK] Corner active: Locking full steering RIGHT (+85).")
+                        return MAX_EMERGENCY_STEER
+                else:
+                        print("[DIRECTION_LOCK] Corner active: Locking full steering LEFT (-85).")
+                        return -MAX_EMERGENCY_STEER
 
-        # initialization for historical tracking
-        if not hasattr(calculate_oc2_steering_bias, "was_dodging"):
-                calculate_oc2_steering_bias.was_dodging = False
-                calculate_oc2_steering_bias.last_dodge_dir = None
+        # Tuning Parameters
+        CRITICAL_CRASH_Y  = 240   
+        SOFT_HAZARD_Y     = 150   
+        SOFT_DRIFT_ANGLE  = 35.0  
+        
+        base_kick = 30.0          
+        gain_multiplier = 0.8
+        deadzone_weigh = 3.0
 
+        # PRIORITY 2 & 3: EVALUATE ABSOLUTE BOUNDARY SAFETY FIRST
+        if track_data["center_x"] != 0 and track_data["center_y"] != 0:
+                cx = track_data["center_x"]
+                cy = track_data["center_y"]
+
+                # LAYER A: CRITICAL EMERGENCY OVERRIDE ZONE (Immediate return, bypasses pillar algorithm)
+                if cy >= CRITICAL_CRASH_Y:
+                        print(f"[CRITICAL BOUNDARY PRIORITY] Wall deep in bumper! X: {cx}, Y: {cy}. Ignoring pillar logic.")
+                        if cx < 320:
+                                return MAX_EMERGENCY_STEER
+                        else:
+                                return -MAX_EMERGENCY_STEER
+                
+                # LAYER B: THICKENED SOFT HAZARD ZONE (Immediate return, bypasses pillar algorithm)
+                elif cy >= SOFT_HAZARD_Y and current_state != States.FIRST_SECTOR:
+                        print(f"[HAZARD BOUNDARY PRIORITY] Wall near bumper. X: {cx}, Y: {cy}. Ignoring pillar logic.")
+                        if cx < 320:
+                                return SOFT_DRIFT_ANGLE
+                        else:
+                                return -SOFT_DRIFT_ANGLE
+
+        # PRIORITY 4: PILLAR AVOIDANCE LAYER (Only executes if the boundary layers above did not trigger)
         target_angle = current_angle
 
-        # ==========================================
-        # WEIGHING - ADJUST THESE FOR SENSITIVITY
-        # ==========================================
-        base_kick = 30.0        # Forceful immediate punch away from pillars
-        gain_multiplier = 0.8   # Scaling size factor for obstacles
-        max_clamp = 85.0        # Sharper emergency saves near walls
-        deadzone_weigh = 3.0    # Detect pillars close to the screen boundaries
-
-        # COUNTER-STEER CONFIGURATION
-        COUNTER_STEER_FORCE = 25.0  # Magnitude of counter-steer
-        COUNTER_STEER_TIME = 0.08   # Time (seconds) to hold counter-steer
-
-        # 2. Obstacle avoidance layer
-        pillar_detected_this_frame = False
-
         if obstacle_data["color"] in ["RED", "GREEN"]:
-                cx = obstacle_data["center_x"]
+                ocx = obstacle_data["center_x"]
                 obstacle_area = (obstacle_data["width"] * obstacle_data["height"]) // 100
 
-                if (0 <= cx <= deadzone_weigh) or (640-deadzone_weigh <= cx <= 640):
-                        print(f"[FILTER_IGNORE] Spotted {obstacle_data['color']} pillar at boundary edge (X: {cx}). Skipping processing.")
-                        return target_angle
+                # Deadzone safety check
+                if not ((0 <= ocx <= deadzone_weigh) or (640-deadzone_weigh <= ocx <= 640)):
+                        if obstacle_area > 20:
+                                dynamic_offset = base_kick + (obstacle_area * gain_multiplier)
+                                dynamic_offset = min(dynamic_offset, MAX_EMERGENCY_STEER)
 
-                print(f"[OBSTACLE_ALERT] Mid-lane Pillar Active! Color: {obstacle_data['color']} | Center X: {cx} | Area: {obstacle_area}")
+                                if obstacle_data["color"] == "RED":
+                                        target_angle += dynamic_offset
+                                        print(f"[AVOIDANCE] Track safe. Evading RED Pillar: Bias (+{dynamic_offset:.2f})")
+                                elif obstacle_data["color"] == "GREEN":
+                                        target_angle -= dynamic_offset
+                                        print(f"[AVOIDANCE] Track safe. Evading GREEN Pillar: Bias (-{dynamic_offset:.2f})")
 
-                if obstacle_area > 20:
-                        pillar_detected_this_frame = True
-                        dynamic_offset = base_kick + (obstacle_area * gain_multiplier)
-                        dynamic_offset = min(dynamic_offset, max_clamp)
-
-                        if obstacle_data["color"] == "RED":
-                                target_angle += dynamic_offset
-                                calculate_oc2_steering_bias.was_dodging = True
-                                calculate_oc2_steering_bias.last_dodge_dir = "RIGHT"
-                                print(f"[AVOIDANCE_ACTION!!] RED Pillar. Steering Bias RIGHT (+{dynamic_offset:.2f}).")
-                        elif obstacle_data["color"] == "GREEN":
-                                target_angle -= dynamic_offset
-                                calculate_oc2_steering_bias.was_dodging = True
-                                calculate_oc2_steering_bias.last_dodge_dir = "LEFT"
-                                print(f"[AVOIDANCE_ACTION!!] GREEN Pillar. Steering Bias LEFT (-{dynamic_offset:.2f}).")
-                else:
-                        print("[AVOIDANCE_SKIP] Distance gap safe. Skipping bias modifier adjustment.")
-
-        # 3. Counter-Steer Recovery Pulse
-        # Triggers if a pillar was just cleared
-        if not pillar_detected_this_frame and calculate_oc2_steering_bias.was_dodging:
-                print(f"[COUNTER-STEER RECOVERY] Pillar cleared! Executing stabilization correction.")
-
-                if calculate_oc2_steering_bias.last_dodge_dir == "RIGHT":
-                        # Dodged a RED pillar to the right -> Instantly snap LEFT to straighten
-                        recovery_angle = -COUNTER_STEER_FORCE
-                        target_angle += recovery_angle
-                        print(f" -> counter action: Pulsing LEFT ({recovery_angle}) to catch alignment.")
-                else:
-                        # Dodged a GREEN pillar to the left -> Instantly snap RIGHT to straighten
-                        recovery_angle = COUNTER_STEER_FORCE
-                        target_angle += recovery_angle
-                        print(f" -> counter action: Pulsing RIGHT (+{recovery_angle}) to catch alignment.")
-
-                # Reset memory
-                calculate_oc2_steering_bias.was_dodging = False
-                calculate_oc2_steering_bias.last_dodge_dir = None
-
-        # Always return the calculated target_angle as a number
-        return target_angle
+        return max(-MAX_EMERGENCY_STEER, min(MAX_EMERGENCY_STEER, target_angle))
 
 state = States.INIT
 last_state = None
@@ -173,10 +172,6 @@ try:
                                 turning_point = right_turning_point
                                 state = States.FIRST_SECTOR
                                 last_state = None
-                                # Clear function attributes on reset
-                                if hasattr(calculate_oc2_steering_bias, "was_dodging"):
-                                        calculate_oc2_steering_bias.was_dodging = False
-                                        calculate_oc2_steering_bias.last_dodge_dir = None
                                 print("FIRST_SECTOR - Reset Complete")
                         reset_OC = False
                         print("Resetted")
@@ -208,19 +203,17 @@ try:
                                 # FIRST SECTOR
                                 # --------------------------------------------------------------
                                 if state == States.FIRST_SECTOR:
-                                        angle = calculate_oc2_steering_bias(track, obstacle, angle)
+                                        angle = calculate_oc2_steering_bias(track, obstacle, angle, state, is_clockwise)
 
-                                        print(f"[STEERING_DECISION] First Sector Output -> Speed: 8 | Combined Angle: {angle:.2f}")
-                                        send_command_logged(f"8, {angle}, -1, move forward")
+                                        print(f"[STEERING_DECISION] First Sector Output -> Speed: 9 | Combined Angle: {angle:.2f}")
+                                        send_command_logged(f"9, {angle}, -1, move forward")
                                         time.sleep(0.025)
 
                                         indi1_inside = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
                                         indi2_inside = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
 
                                         if indi1_inside == False and indi2_inside == True and track["center_x"] != 0:
-                                                print("[FSM_STAGE_1] Corner confirmation pass 1 triggered. Double-checking sensor alignment...")
-                                                time.sleep(0.033)
-
+                                                time.sleep(0.010)
                                                 indi1_retry = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
                                                 indi2_retry = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
 
@@ -230,25 +223,18 @@ try:
                                                         print(f"[FSM_SUCCESS] Corner verified! Direction: {'CLOCKWISE' if is_clockwise else 'COUNTER-CLOCKWISE'}")
                                                         state = States.TURNING_STATE
                                                         num_of_turn += 1
-
+                                                        
                                                         print(f"\n**************************************************")
                                                         print(f">>>>>>>> [ TURN COUNT REGISTERED: {num_of_turn} / 12 ] <<<<<<<<")
                                                         print(f"**************************************************\n")
-                                                else:
-                                                        print("[FSM_STAGE_1_FAILED] False corner read on pass 2. Resuming straight line run.")
 
                                 # --------------------------------------------------------------
                                 # WAIT TURN STATE
                                 # --------------------------------------------------------------
                                 elif state == States.WAIT_TURN_STATE:
-                                        print(f"[WAIT_ALIGN] Executing delayed forward roll. Evaluating Turn Point Coordinate: {turning_point}")
-                                        send_command_logged("8, 0, -1, wait turn")
-
+                                        send_command_logged("9, 0, -1, wait turn")
                                         at_turning_node = get_track_distance(turning_point[0], turning_point[1])[0]
-                                        print(f"[WAIT_ALIGN] Coordinate Target Status: {at_turning_node}")
-
                                         if at_turning_node == True:
-                                                print(f"[WAIT_ALIGN] Target coordinate hit. Initializing Turn Sequence #{num_of_turn + 1}")
                                                 state = States.TURNING_STATE
                                                 num_of_turn += 1
                                                 time.sleep(0.25)
@@ -257,26 +243,17 @@ try:
                                 # TURNING STATE
                                 # --------------------------------------------------------------
                                 elif state == States.TURNING_STATE:
-                                        base_turn_angle = (track["center_x"] - 320) / 0.4
-                                        base_turn_angle = max(-100, min(100, base_turn_angle))
-
-                                        angle = calculate_oc2_steering_bias(track, obstacle, base_turn_angle)
-
-                                        print(f"[TURNING_ARC] Center Line Delta: {track['center_x'] - 320} | Final Arc Target Angle: {angle:.2f}")
-                                        send_command_logged(f"8, {angle}, -1, turn")
+                                        angle = calculate_oc2_steering_bias(track, obstacle, angle, state, is_clockwise)
+                                        
+                                        print(f"[TURNING_ARC] Locked Steering Turn Mode Engine Target Angle: {angle:.2f}")
+                                        send_command_logged(f"9, {angle}, -1, turn")
 
                                         exit_landmark_detected = get_track_distance(sector_indi[0], sector_indi[1])[0]
-                                        print(f"[TURNING_EXIT_CHECK] Sector Indicator Status: {exit_landmark_detected} | Elapsed Turn Time: {turn_time:.3f}s")
-
+                                        
                                         if exit_landmark_detected == True:
-                                                if turn_time <= 0.3:
-                                                        print(f"[TURNING_REJECT] Corner landmark triggered too early ({turn_time:.3f}s). Reverting turn count registry.")
+                                                if turn_time <= 0.10:
+                                                        print(f"[TURNING_REJECT] Corner landmark triggered too early ({turn_time:.3f}s). Reverting.")
                                                         num_of_turn -= 1
-
-                                                        print(f"\n--------------------------------------------------")
-                                                        print(f"-------- [ TURN COUNT REVERTED: {num_of_turn} / 12 ] --------")
-                                                        print(f"--------------------------------------------------\n")
-
                                                         state = States.RUN_SECTOR_STATE
                                                         turn_time = 0
                                                         angle = 0
@@ -286,39 +263,46 @@ try:
                                                 buffer = angle / 5
                                                 for i in range(4):
                                                         angle -= buffer
-                                                        print(f"[TURNING_DAMPEN] Dampening Cycle Step {i+1}/4 -> Reduced Steering: {angle:.2f}")
-                                                        send_command_logged(f"10, {angle}, -1, turn")
+                                                        send_command_logged(f"11, {angle}, -1, turn")
                                                         time.sleep(0.02)
 
                                                 if num_of_turn == 12:
-                                                        print("[FSM_COMPLETION] Turn #12 registered! Redirecting to Final Stop Run Line.")
                                                         state = States.LAST_RUN
                                                 else:
                                                         state = States.RUN_SECTOR_STATE
                                                 turn_time = 0
                                         else:
-                                                time.sleep(0.025)
-                                                turn_time += 0.025
+                                                if turn_time > 1.5:
+                                                        print("[FSM_EMERGENCY] Turn timeout breached! Forcing recovery to cruise state.")
+                                                        state = States.RUN_SECTOR_STATE
+                                                        turn_time = 0
+                                                else:
+                                                        time.sleep(0.025)
+                                                        turn_time += 0.025
 
                                 # --------------------------------------------------------------
                                 # DASH AFTER TURNING STATE
                                 # --------------------------------------------------------------
                                 elif state == States.DASH_AFTER_TURNING_STATE:
-                                        print(f"[DASH_RUN] Clearing intersection threshold. Straight run locking for 250ms.")
-                                        send_command_logged("8, 0, -1, go forward")
+                                        send_command_logged("9, 0, -1, go forward")
                                         time.sleep(0.25)
-
                                         if num_of_turn == 12:
-                                                print("[FSM_COMPLETION] Final Dash Complete. Redirecting to Final Stop Run Line.")
                                                 state = States.LAST_RUN
                                         else:
                                                 state = States.RUN_SECTOR_STATE
 
                                 # --------------------------------------------------------------
-                                # RUN SECTOR STATE
+                                # RUN SECTOR STATE (Hierarchical Priority Maintained Here)
                                 # --------------------------------------------------------------
                                 elif state == States.RUN_SECTOR_STATE:
-                                        angle = calculate_oc2_steering_bias(track, obstacle, angle)
+                                        if track["center_x"] != 0:
+                                                error_x = track["center_x"] - 320
+                                                base_tracking_angle = error_x * 0.15
+                                        else:
+                                                base_tracking_angle = 0.0
+
+                                        # Safety loops inside calculate_oc2_steering_bias will now instantly override base_tracking_angle
+                                        angle = calculate_oc2_steering_bias(track, obstacle, base_tracking_angle, state, is_clockwise)
 
                                         print(f"[STEERING_DECISION] Cruise Sector Output -> Speed: 12 | Combined Angle: {angle:.2f}")
                                         send_command_logged(f"12, {angle}, -1, move forward")
@@ -328,30 +312,22 @@ try:
                                         sector_indi2 = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
 
                                         if sector_indi1 == False and sector_indi2 == True:
-                                                print("[CRUISE_FSM] Upcoming corner landmark detected on pass 1. Validating entry frame...")
-                                                time.sleep(0.033)
-
+                                                time.sleep(0.010)
                                                 sector_indi1_retry = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
                                                 sector_indi2_retry = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
 
                                                 if sector_indi1_retry == False and sector_indi2_retry == True:
-                                                        print(f"[CRUISE_FSM_SUCCESS] Corner entry verified. Transferring control to TURNING_STATE.")
                                                         state = States.TURNING_STATE
                                                         num_of_turn += 1
-
                                                         print(f"\n**************************************************")
                                                         print(f">>>>>>>> [ TURN COUNT REGISTERED: {num_of_turn} / 12 ] <<<<<<<<")
                                                         print(f"**************************************************\n")
-                                                else:
-                                                        print("[CRUISE_FSM_FALSE] Intersection validation failed on pass 2. Disregarding.")
 
                                 # --------------------------------------------------------------
                                 # LAST RUN
                                 # --------------------------------------------------------------
                                 elif state == States.LAST_RUN:
-                                        print("[FINAL_LANE] Core loops complete. Decelerating and centering vehicle for stop line...")
                                         time.sleep(0.5)
-                                        print("[FINAL_STOP] Execution finished. Sending absolute zero brake code down serial line.")
                                         send_command_logged("0, 0, 0, motor stop")
                                         break
 
