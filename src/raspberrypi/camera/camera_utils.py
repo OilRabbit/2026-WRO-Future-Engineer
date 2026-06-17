@@ -148,7 +148,7 @@ def _scan_obstacle_thread():
 # Thread function for scanning the parking lot
 def _scan_parkinglot_thread():
 	global _shared_hsv, parkinglot_data, _display_masks
-	while Tru4:
+	while True:
 		with _hsv_lock:
 			if _shared_hsv is None:
 				time.sleep(0.01)

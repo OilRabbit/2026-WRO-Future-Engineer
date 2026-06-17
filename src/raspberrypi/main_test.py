@@ -1,7 +1,6 @@
 # testing
 import time
 import datetime
-import math
 from esp_com.communication import ESP32Communicator
 from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance
 from picamera2 import Picamera2 as picam2
@@ -9,6 +8,7 @@ from enum import Enum
 
 # ESP communication and Picam init
 print("======= Init =======")
+
 esp = ESP32Communicator()
 esp.connect()
 camera = picam2()
@@ -21,14 +21,14 @@ start_vision_system(camera, True)
 
 live_streaming = True
 if live_streaming:
-        print("Streaming: Activated")
-        start_web_server(host='0.0.0.0', port=5000)
+    print("Streaming: Activated")
+    start_web_server(host='0.0.0.0', port=5000)
 else:
-        print("Streaming: Not streaming")
+    print("Streaming: Not streaming")
 
 print("======= End of Init =======")
 
-# Global tracking variables
+# Global variables
 run_OC1 = False
 run_OC2 = False
 reset_OC = True
@@ -38,329 +38,350 @@ start_time = 0
 end_time = 0
 recorded_time = 0
 
-# Checkpoints & Indicators
-angle = 0
-turn_indi_1 = [320, 30]
-turn_indi_2 = [320, 60]
-sector_indi = [320, 50]
+angle = 0  # steering percentage
+turn_indi_1 = [320, 30]  # check when to turn
+turn_indi_2 = [320, 60]  # check when to turn
+sector_indi = [320, 50]  # check when is sector
 turn_time = 0
 
-front_turning_point = [320, 70]
-left_turning_point = [40, 200]
-right_turning_point = [600, 200]
+# PD Tracking Memory for stabilizing the ultra-tight inner wall path
+last_track_error = 0.0
+
+left_turning_point = [40, 140]
+right_turning_point = [600, 140] 
 turning_point = right_turning_point
-track_left = [[80, 180], [520, 180]]
-track_right = [[120, 180], [560, 180]]
-ending_point = [320, 30]
+
+# Central vertical curtain parameters
+FRONT_SCAN_Y_START = 0    
+FRONT_SCAN_Y_END = 140    
+FRONT_SCAN_STEP = 5       
+
+# Radar scanning bands matching baseline setup
+RADAR_COUNTER_CW = [140, 230, 320]     
+RADAR_CLOCKWISE = [320, 410, 500]      
+
+# FIRST SECTOR HORIZONTAL RANGES
+# these values are highly related to the sensitivity of the robot turning around the corners
+INIT_SCAN_Y = 140
+LEFT_SCAN_X_START = 20
+LEFT_SCAN_X_END = 120
+RIGHT_SCAN_X_START = 520               
+RIGHT_SCAN_X_END = 620                 
+SCAN_STEP_X = 8
+
+# ======================================================================
+# TUNED: SAFETY ZONES (15 Pixels from Screen Edges)
+# ======================================================================
+track_left = [15, 280]                 
+track_right = [625, 280]               
+
+# Retained early-reaction finish line configuration
+ending_point = [320, 110]
 
 # States
 class States(Enum):
-        INIT = 0
-        FIRST_SECTOR = 1
-        WAIT_TURN_STATE = 2
-        TURNING_STATE = 3
-        DASH_AFTER_TURNING_STATE = 4
-        RUN_SECTOR_STATE = 5
-        LAST_RUN = 6
+    INIT = 0
+    FIRST_SECTOR = 1
+    WAIT_TURN_STATE = 2
+    TURNING_STATE = 3
+    DASH_AFTER_TURNING_STATE = 4
+    RUN_SECTOR_STATE = 5
+    LAST_RUN = 6
 
+# Dynamic multi-line vertical range check 
+def check_front_wall_range(columns_to_scan):
+    for x_pos in columns_to_scan:
+        for y in range(FRONT_SCAN_Y_START, FRONT_SCAN_Y_END + 1, FRONT_SCAN_STEP):
+            if get_track_distance(x_pos, y)[0]:
+                return True
+    return False
+
+# Horizontal side sector range scanners for startup accuracy
+def check_left_sector_range():
+    for x in range(LEFT_SCAN_X_START, LEFT_SCAN_X_END + 1, SCAN_STEP_X):
+        if get_track_distance(x, INIT_SCAN_Y)[0]:
+            return True
+    return False
+
+def check_right_sector_range():
+    for x in range(RIGHT_SCAN_X_START, RIGHT_SCAN_X_END + 1, SCAN_STEP_X):
+        if get_track_distance(x, INIT_SCAN_Y)[0]:
+            return True
+    return False
+
+# Hardened function for receiving messages from ESP, intercepting connection dropped issues safely
 def esp_replyNprint():
+    global esp
+    try:
+        reply = esp.read_message()
+        if reply is not None:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            print(f"[{timestamp}] [ESP_IN] Received: {reply}")
+            return reply
+    except (OSError, Exception) as e:
+        print(f"\n[SERIAL WARNING] Caught hardware connection glitch: {e}")
+        print("Attempting to bypass frame drop and reconnect to ESP32...")
         try:
-                reply = esp.read_message()
-                if reply is not None:
-                        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-                        print(f"{timestamp} ESP: {reply}")
-                        return reply
-        except Exception as e:
-                print(f"\n[SERIAL WARNING] Caught hardware communication glitch: {e}")
-                print("Attempting to bypass frame drop...")
-        return None
+            esp.disconnect()
+            time.sleep(0.1)
+            esp.connect()
+            print("[SERIAL SUCCESS] Reconnected successfully!")
+        except Exception as recon_err:
+            print(f"[SERIAL CRITICAL] Automatic reconnection failed: {recon_err}")
+    return None
 
+# Debug filter to prevent terminal flooding during high-frequency execution
 last_action_logged = ""
 def send_command_logged(cmd_str):
-        global last_action_logged
+    """Sends command to ESP32 only if it differs from the last sent command"""
+    global last_action_logged
+    try:
         esp.send_command(cmd_str)
         if cmd_str != last_action_logged:
-                print(f"[ESP_OUT] Sent Command: {cmd_str}")
-                last_action_logged = cmd_str
-
-# ======================================================================
-# METHOD 1: CRITICAL HIERARCHICAL BUMPER PERCEPTION ENGINE
-# ======================================================================
-def calculate_oc2_steering_bias(track_data, obstacle_data, current_angle, current_state, clockwise_mode):
-        """
-        Enforces a strict priority hierarchy:
-        1. Corner State Lock (Absolute Highest)
-        2. Critical Wall Crash Zone (Overrides Pillars)
-        3. Thickened Wall Hazard Zone (Overrides Pillars)
-        4. Pillar/Obstacle Avoidance Layer (Only runs when boundaries are safe)
-        """
-        MAX_EMERGENCY_STEER = 85.0 
-        
-        # PRIORITY 1: FORCE THE CORNER DIRECTION IMMEDIATELY IF CORNER STATE IS ENGAGED
-        if current_state == States.TURNING_STATE:
-                if clockwise_mode:
-                        print("[DIRECTION_LOCK] Corner active: Locking full steering RIGHT (+85).")
-                        return MAX_EMERGENCY_STEER
-                else:
-                        print("[DIRECTION_LOCK] Corner active: Locking full steering LEFT (-85).")
-                        return -MAX_EMERGENCY_STEER
-
-        # Tuning Parameters
-        CRITICAL_CRASH_Y  = 240   
-        SOFT_HAZARD_Y     = 150   
-        SOFT_DRIFT_ANGLE  = 35.0  
-        
-        base_kick = 30.0          
-        gain_multiplier = 0.8
-        deadzone_weigh = 3.0
-
-        # PRIORITY 2 & 3: EVALUATE ABSOLUTE BOUNDARY SAFETY FIRST
-        if track_data["center_x"] != 0 and track_data["center_y"] != 0:
-                cx = track_data["center_x"]
-                cy = track_data["center_y"]
-
-                # LAYER A: CRITICAL EMERGENCY OVERRIDE ZONE (Immediate return, bypasses pillar algorithm)
-                if cy >= CRITICAL_CRASH_Y:
-                        print(f"[CRITICAL BOUNDARY PRIORITY] Wall deep in bumper! X: {cx}, Y: {cy}. Ignoring pillar logic.")
-                        if cx < 320:
-                                return MAX_EMERGENCY_STEER
-                        else:
-                                return -MAX_EMERGENCY_STEER
-                
-                # LAYER B: THICKENED SOFT HAZARD ZONE (Immediate return, bypasses pillar algorithm)
-                elif cy >= SOFT_HAZARD_Y and current_state != States.FIRST_SECTOR:
-                        print(f"[HAZARD BOUNDARY PRIORITY] Wall near bumper. X: {cx}, Y: {cy}. Ignoring pillar logic.")
-                        if cx < 320:
-                                return SOFT_DRIFT_ANGLE
-                        else:
-                                return -SOFT_DRIFT_ANGLE
-
-        # PRIORITY 4: PILLAR AVOIDANCE LAYER (Only executes if the boundary layers above did not trigger)
-        target_angle = current_angle
-
-        if obstacle_data["color"] in ["RED", "GREEN"]:
-                ocx = obstacle_data["center_x"]
-                obstacle_area = (obstacle_data["width"] * obstacle_data["height"]) // 100
-
-                # Deadzone safety check
-                if not ((0 <= ocx <= deadzone_weigh) or (640-deadzone_weigh <= ocx <= 640)):
-                        if obstacle_area > 20:
-                                dynamic_offset = base_kick + (obstacle_area * gain_multiplier)
-                                dynamic_offset = min(dynamic_offset, MAX_EMERGENCY_STEER)
-
-                                if obstacle_data["color"] == "RED":
-                                        target_angle += dynamic_offset
-                                        print(f"[AVOIDANCE] Track safe. Evading RED Pillar: Bias (+{dynamic_offset:.2f})")
-                                elif obstacle_data["color"] == "GREEN":
-                                        target_angle -= dynamic_offset
-                                        print(f"[AVOIDANCE] Track safe. Evading GREEN Pillar: Bias (-{dynamic_offset:.2f})")
-
-        return max(-MAX_EMERGENCY_STEER, min(MAX_EMERGENCY_STEER, target_angle))
+            print(f"[ESP_OUT] Sent Command: {cmd_str}")
+            last_action_logged = cmd_str
+    except (OSError, Exception) as e:
+        print(f"[SERIAL WARNING] Failed to transmit command '{cmd_str}': {e}")
 
 state = States.INIT
 last_state = None
 
 try:
-        print("IDLE")
-        while True:
-                if reset_OC:
-                        if run_OC1 or run_OC2:
-                                angle = 0
-                                turn_time = 0
-                                num_of_turn = 0
-                                is_clockwise = True
-                                turning_point = right_turning_point
-                                state = States.FIRST_SECTOR
-                                last_state = None
-                                print("FIRST_SECTOR - Reset Complete")
-                        reset_OC = False
-                        print("Resetted")
+    print("IDLE")
+    while True:
+        if reset_OC:
+            num_of_turn = 0
+            is_clockwise = True
+            turning_point = right_turning_point
+            track_left = [15, 280]
+            track_right = [625, 280]
+            last_track_error = 0.0
+            if run_OC1:
+                state = States.FIRST_SECTOR
+            reset_OC = False
+            last_state = None
+            print("Resetted")
+            continue
+
+        elif run_OC1:
+            print("[FSM] Starting OC1 Challenge Operations!")
+            send_command_logged("OC1")
+            start_time = time.perf_counter()
+
+            while run_OC1:
+                end_time = time.perf_counter()
+                reply = esp_replyNprint()
+
+                if state != last_state:
+                    print(f"\n[FSM] STATE CHANGE: {last_state} ===> {state}")
+                    last_state = state
+
+                if reply == "EOC1":
+                    print("EOC1")
+                    run_OC1 = False
+                    break
+
+                _, _, track = get_latest_data()
+
+                # Determine active radar setup dynamically based on current tracking state
+                active_radar = RADAR_CLOCKWISE if is_clockwise else RADAR_COUNTER_CW
+
+                # ======================================================================
+                # 1. FIRST SECTOR
+                # ======================================================================
+                if state == States.FIRST_SECTOR:
+                    send_command_logged("12, 0, -1, go forward")
+
+                    see_left_zone = check_left_sector_range()
+                    see_right_zone = check_right_sector_range()
+                    see_front_wall_range = check_front_wall_range(active_radar)
+
+                    if see_left_zone:
+                        print(f"[STARTUP LOCK] Left corridor array triggered! Orientation: Counter-Clockwise.")
+                        is_clockwise = False
+                        turning_point = left_turning_point
+                        state = States.WAIT_TURN_STATE
+                        continue
+
+                    elif see_right_zone:
+                        print(f"[STARTUP LOCK] Right corridor array triggered! Orientation: Clockwise.")
+                        is_clockwise = True
+                        turning_point = right_turning_point
+                        state = States.WAIT_TURN_STATE
+                        continue
+
+                    elif see_front_wall_range:
+                        if track["center_x"] < 320:
+                            print(f"[STARTUP FAILSAFE] Front curtain triggered! Bias Left -> Counter-Clockwise.")
+                            is_clockwise = False
+                            turning_point = left_turning_point
+                        else:
+                            print(f"[STARTUP FAILSAFE] Front curtain triggered! Bias Right -> Clockwise.")
+                            is_clockwise = True
+                            turning_point = right_turning_point
+                        state = States.WAIT_TURN_STATE
                         continue
 
                 # ======================================================================
-                # RUN OC1 BLOCK
+                # 2. WAIT TURN STATE
                 # ======================================================================
-                elif run_OC1:
-                        send_command_logged("OC1")
-                        start_time = time.perf_counter()
-                        while run_OC1:
-                                end_time = time.perf_counter()
-                                reply = esp_replyNprint()
-                                if reply == "EOC1":
-                                        print("\n[FSM ALERT] EOC1 Signal Received from ESP32. Terminating run immediately.")
-                                        run_OC1 = False
-                                        break
+                elif state == States.WAIT_TURN_STATE:
+                    send_command_logged("15, 0, 1, encoder approach")
 
-                                if state != last_state:
-                                        print(f"\n==================================================")
-                                        print(f"[FSM CHANGE] State Transition: {last_state} ===> {state}")
-                                        print(f"==================================================\n")
-                                        last_state = state
+                    see_target_side = get_track_distance(turning_point[0], turning_point[1])[0]
+                    see_front_wall_range = check_front_wall_range(active_radar)
 
-                                obstacle, parking, track = get_latest_data()
+                    if reply == "DEGREE_DONE" or see_target_side or see_front_wall_range:
+                        state = States.TURNING_STATE
+                        num_of_turn += 1
+                        print(f"[FSM] Dynamic radar array triggered! Moving to turn {num_of_turn}")
+                        time.sleep(0.1)
+                        continue
 
-                                # --------------------------------------------------------------
-                                # FIRST SECTOR
-                                # --------------------------------------------------------------
-                                if state == States.FIRST_SECTOR:
-                                        angle = calculate_oc2_steering_bias(track, obstacle, angle, state, is_clockwise)
+                # ======================================================================
+                # 3. TURNING STATE 
+                # ======================================================================
+                elif state == States.TURNING_STATE:
+                    angle = (track["center_x"] - 320) / 0.4
+                    if angle > 100: angle = 100
+                    elif angle < -100: angle = -100
 
-                                        print(f"[STEERING_DECISION] First Sector Output -> Speed: 9 | Combined Angle: {angle:.2f}")
-                                        send_command_logged(f"9, {angle}, -1, move forward")
-                                        time.sleep(0.025)
+                    send_command_logged(f"15, {angle}, -1, turn")
 
-                                        indi1_inside = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
-                                        indi2_inside = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
+                    is_sector_detected = get_track_distance(sector_indi[0], sector_indi[1])[0]
 
-                                        if indi1_inside == False and indi2_inside == True and track["center_x"] != 0:
-                                                time.sleep(0.010)
-                                                indi1_retry = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
-                                                indi2_retry = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
+                    if is_sector_detected:
+                        if turn_time <= 0.3:
+                            num_of_turn -= 1
+                            state = States.RUN_SECTOR_STATE
+                            turn_time = 0
+                            angle = 0
+                            last_track_error = 0.0
+                            continue
 
-                                                if indi1_retry == False and indi2_retry == True and track["center_x"] != 0:
-                                                        if track["center_x"] < 320:
-                                                                is_clockwise = False
-                                                        print(f"[FSM_SUCCESS] Corner verified! Direction: {'CLOCKWISE' if is_clockwise else 'COUNTER-CLOCKWISE'}")
-                                                        state = States.TURNING_STATE
-                                                        num_of_turn += 1
-                                                        
-                                                        print(f"\n**************************************************")
-                                                        print(f">>>>>>>> [ TURN COUNT REGISTERED: {num_of_turn} / 12 ] <<<<<<<<")
-                                                        print(f"**************************************************\n")
+                        buffer = angle / 5
+                        for i in range(4):
+                            angle -= buffer
+                            send_command_logged(f"12, {angle}, -1, turn")
+                            time.sleep(0.02)
 
-                                # --------------------------------------------------------------
-                                # WAIT TURN STATE
-                                # --------------------------------------------------------------
-                                elif state == States.WAIT_TURN_STATE:
-                                        send_command_logged("9, 0, -1, wait turn")
-                                        at_turning_node = get_track_distance(turning_point[0], turning_point[1])[0]
-                                        if at_turning_node == True:
-                                                state = States.TURNING_STATE
-                                                num_of_turn += 1
-                                                time.sleep(0.25)
+                        if num_of_turn == 12:
+                            state = States.LAST_RUN
+                        else:
+                            state = States.DASH_AFTER_TURNING_STATE
+                        turn_time = 0
+                    else:
+                        time.sleep(0.025)
+                        turn_time += 0.025
+                        continue
 
-                                # --------------------------------------------------------------
-                                # TURNING STATE
-                                # --------------------------------------------------------------
-                                elif state == States.TURNING_STATE:
-                                        angle = calculate_oc2_steering_bias(track, obstacle, angle, state, is_clockwise)
-                                        
-                                        print(f"[TURNING_ARC] Locked Steering Turn Mode Engine Target Angle: {angle:.2f}")
-                                        send_command_logged(f"9, {angle}, -1, turn")
+                # ======================================================================
+                # 4. DASH AFTER TURNING STATE 
+                # ======================================================================
+                elif state == States.DASH_AFTER_TURNING_STATE:
+                    if is_clockwise:
+                        send_command_logged("20, 35, 150, violent dive right")
+                    else:
+                        send_command_logged("20, -35, 150, violent dive left")
 
-                                        exit_landmark_detected = get_track_distance(sector_indi[0], sector_indi[1])[0]
-                                        
-                                        if exit_landmark_detected == True:
-                                                if turn_time <= 0.10:
-                                                        print(f"[TURNING_REJECT] Corner landmark triggered too early ({turn_time:.3f}s). Reverting.")
-                                                        num_of_turn -= 1
-                                                        state = States.RUN_SECTOR_STATE
-                                                        turn_time = 0
-                                                        angle = 0
-                                                        continue
+                    time.sleep(0.14)
 
-                                                print(f"[TURNING_EXIT_CONFIRMED] Apex cleared at {turn_time:.3f}s. Initializing steering dampening routine.")
-                                                buffer = angle / 5
-                                                for i in range(4):
-                                                        angle -= buffer
-                                                        send_command_logged(f"11, {angle}, -1, turn")
-                                                        time.sleep(0.02)
+                    if num_of_turn == 12:
+                        state = States.LAST_RUN
+                    else:
+                        state = States.RUN_SECTOR_STATE
+                        last_track_error = 0.0
 
-                                                if num_of_turn == 12:
-                                                        state = States.LAST_RUN
-                                                else:
-                                                        state = States.RUN_SECTOR_STATE
-                                                turn_time = 0
-                                        else:
-                                                if turn_time > 1.5:
-                                                        print("[FSM_EMERGENCY] Turn timeout breached! Forcing recovery to cruise state.")
-                                                        state = States.RUN_SECTOR_STATE
-                                                        turn_time = 0
-                                                else:
-                                                        time.sleep(0.025)
-                                                        turn_time += 0.025
+                # ======================================================================
+                # 5. RUN SECTOR STATE 
+                # ======================================================================
+                elif state == States.RUN_SECTOR_STATE:
+                    see_target_side = get_track_distance(turning_point[0], turning_point[1])[0]
+                    see_front_wall_range = check_front_wall_range(active_radar)
 
-                                # --------------------------------------------------------------
-                                # DASH AFTER TURNING STATE
-                                # --------------------------------------------------------------
-                                elif state == States.DASH_AFTER_TURNING_STATE:
-                                        send_command_logged("9, 0, -1, go forward")
-                                        time.sleep(0.25)
-                                        if num_of_turn == 12:
-                                                state = States.LAST_RUN
-                                        else:
-                                                state = States.RUN_SECTOR_STATE
+                    if see_target_side or see_front_wall_range:
+                        print(f"[VISION LOCK-ON] Imminent wall registered by dynamic radar. Moving to corner approach.")
+                        state = States.WAIT_TURN_STATE
+                        continue
 
-                                # --------------------------------------------------------------
-                                # RUN SECTOR STATE (Hierarchical Priority Maintained Here)
-                                # --------------------------------------------------------------
-                                elif state == States.RUN_SECTOR_STATE:
-                                        if track["center_x"] != 0:
-                                                error_x = track["center_x"] - 320
-                                                base_tracking_angle = error_x * 0.15
-                                        else:
-                                                base_tracking_angle = 0.0
+                    # Evaluates proximity based on new [15] and [625] coordinates
+                    too_close_left = get_track_distance(track_left[0], track_left[1])[0]
+                    too_close_right = get_track_distance(track_right[0], track_right[1])[0]
 
-                                        # Safety loops inside calculate_oc2_steering_bias will now instantly override base_tracking_angle
-                                        angle = calculate_oc2_steering_bias(track, obstacle, base_tracking_angle, state, is_clockwise)
+                    Kp = 2.6
+                    Kd = 1.2
 
-                                        print(f"[STEERING_DECISION] Cruise Sector Output -> Speed: 12 | Combined Angle: {angle:.2f}")
-                                        send_command_logged(f"12, {angle}, -1, move forward")
-                                        time.sleep(0.025)
+                    if is_clockwise:
+                        if too_close_right:
+                            base_angle = -40  
+                            current_error = 0.0
+                        else:
+                            current_error = track["center_x"] - 595
+                            derivative = current_error - last_track_error
+                            base_angle = (current_error * Kp) + (derivative * Kd)
+                    else:
+                        if too_close_left:
+                            base_angle = 40   
+                            current_error = 0.0
+                        else:
+                            current_error = track["center_x"] - 45
+                            derivative = current_error - last_track_error
+                            base_angle = (current_error * Kp) + (derivative * Kd)
 
-                                        sector_indi1 = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
-                                        sector_indi2 = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
+                    last_track_error = current_error
 
-                                        if sector_indi1 == False and sector_indi2 == True:
-                                                time.sleep(0.010)
-                                                sector_indi1_retry = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
-                                                sector_indi2_retry = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
+                    base_angle = max(-85, min(85, base_angle))
+                    send_command_logged(f"20, {int(base_angle)}, -1, magnet runner")
 
-                                                if sector_indi1_retry == False and sector_indi2_retry == True:
-                                                        state = States.TURNING_STATE
-                                                        num_of_turn += 1
-                                                        print(f"\n**************************************************")
-                                                        print(f">>>>>>>> [ TURN COUNT REGISTERED: {num_of_turn} / 12 ] <<<<<<<<")
-                                                        print(f"**************************************************\n")
+                # ======================================================================
+                # 6. LAST RUN 
+                # ======================================================================
+                elif state == States.LAST_RUN:
+                    send_command_logged("-10, 0, -1, search final line")
 
-                                # --------------------------------------------------------------
-                                # LAST RUN
-                                # --------------------------------------------------------------
-                                elif state == States.LAST_RUN:
-                                        time.sleep(0.5)
-                                        send_command_logged("0, 0, 0, motor stop")
-                                        break
+                    if get_track_distance(ending_point[0], ending_point[1])[0]:
+                        print("[VISION SUCCESS] Final wall spotted early! Initiating braking sequence.")
 
-                                time.sleep(0.005)
+                        send_command_logged("0, 0, 0, move forward")
+                        time.sleep(0.45)
 
-                elif run_OC2:
-                        send_command_logged("OC2")
-                        while run_OC2:
-                                reply = esp_replyNprint()
-                                if reply == "EOC2":
-                                        run_OC2 = False
-                                        break
-                                time.sleep(0.005)
+                        send_command_logged("0, 0, 0, motor stop")
+                        end_time = time.perf_counter()
+                        run_OC1 = False
+                        break
 
-                else:
-                        recorded_time = end_time - start_time
-                        reply = esp_replyNprint()
-                        if reply == "ROC1":
-                                reset_OC = True
-                                run_OC1 = True
-                                continue
-                        elif reply == "ROC2":
-                                reset_OC = True
-                                run_OC2 = True
-                                continue
-                time.sleep(0.05)
+                time.sleep(0.005)
+
+        elif run_OC2:
+            send_command_logged("OC2")
+            while run_OC2:
+                reply = esp_replyNprint()
+                if reply == "EOC2":
+                    run_OC2 = False
+                    break
+                time.sleep(0.005)
+
+        else:
+            recorded_time = end_time - start_time
+            reply = esp_replyNprint()
+            if reply == "ROC1":
+                print("[EVENT] Received start instruction for OC1 Challenge.")
+                reset_OC = True
+                run_OC1 = True
+                continue
+            elif reply == "ROC2":
+                print("[EVENT] Received start instruction for OC2 Challenge.")
+                reset_OC = True
+                run_OC2 = True
+                continue
+        time.sleep(0.05)
 
 except KeyboardInterrupt:
-        print("\nShutting down software pipeline gracefully...")
-        try:
-                esp.send_command("0, 0, 0, emergency_stop")
-        except Exception:
-                pass
-        esp.disconnect()
-        stop_vision_system()
-        time.sleep(0.5)
+    print("\nShutting down...")
+    try:
+        esp.send_command("0, 0, 0, emergency_stop")
+    except Exception:
+        pass
+    esp.disconnect()
+    stop_vision_system()
+    time.sleep(0.5)
