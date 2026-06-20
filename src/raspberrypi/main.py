@@ -87,7 +87,9 @@ try:
 				is_clockwise = True
 				turning_point = right_turning_point
 				state = States.FIRST_SECTOR
-				print("FIRST_SECTOR") 
+				print("FIRST_SECTOR")
+			if run_OC2:
+				angle = 0
 			# End of reset #
 			reset_OC = False
 			print("Resetted")
@@ -119,6 +121,8 @@ try:
 							turn_flag = 0
 							if track["center_x"] < 310:
 								is_clockwise = False
+							else:
+								is_clockwise = True
 							print(is_clockwise)
 							state = States.TURNING_STATE
 							num_of_turn += 1
@@ -163,8 +167,12 @@ try:
 						if turn_time <= 0.1:
 							num_of_turn -= 1
 							print(num_of_turn)
-							state = States.RUN_SECTOR_STATE
-							print("sector")
+							if num_of_turn > 0:
+								state = States.RUN_SECTOR_STATE
+								print("sector")
+							else:
+								state = States.FIRST_SECTOR
+								print("first")
 							turn_time = 0
 							angle = 0
 							continue 
@@ -261,8 +269,12 @@ try:
 				if reply == "EOC2":
 					run_OC2 = False
 					break
+				pillar, park, track = get_latest_data()
+
 				# OC2 FSM #
-	
+				if pillar["color"] == "red":
+
+				
 				# End of OC2 FSM #
 				time.sleep(0.005)
 				
