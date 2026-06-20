@@ -41,9 +41,10 @@ recorded_time = 0
 
 #Checkpoints (default as clockwise case)
 angle = 0 #steering percentage
+turn_flag = 0
 turn_indi_1 = [310, 80] #check when to turn
 turn_indi_2 = [310, 110] #check when to turn
-sector_indi = [[260, 80], [360, 80]] #check when is sector
+sector_indi = [[270, 90], [350, 90]] #check when is sector
 turn_time = 0
 
 front_turning_point = [320, 70]
@@ -114,17 +115,19 @@ try:
 					esp.send_command("12, " + str(angle) + ", -1, move forward")
 					time.sleep(0.025)
 					if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
-						print(1)
-						time.sleep(0.033)
-						if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
+						if turn_flag:
+							turn_flag = 0
 							if track["center_x"] < 310:
 								is_clockwise = False
 							print(is_clockwise)
 							state = States.TURNING_STATE
 							num_of_turn += 1
 							print(num_of_turn)
-							print("turning state")
-
+							print("turning")
+						else:
+							turn_flag = 1
+					else:
+						turn_flag = 0
 					continue
 
 					esp.send_command("8, 0, -1, move forward")
@@ -156,9 +159,8 @@ try:
 					if angle <-100:
 						angle = -100
 					esp.send_command("12, " + str(angle) +", -1, turn")
-					print(angle)
 					if get_track_distance(sector_indi[is_clockwise][0], sector_indi[is_clockwise][1])[0] == True:
-						if turn_time <= 0.2:
+						if turn_time <= 0.1:
 							num_of_turn -= 1
 							print(num_of_turn)
 							state = States.RUN_SECTOR_STATE
@@ -203,19 +205,21 @@ try:
 				#Run sector and keep a certain distance from the inner barrier
 				elif state == States.RUN_SECTOR_STATE:                    
 					if track["center_x"] != 0:
-						angle_temp = (track["center_x"]-310)*abs(track["center_x"]-310)/200
+						angle_temp = (track["center_x"]-310)*abs(track["center_x"]-310)/250
 						if angle_temp < 50 and angle_temp > -50:
 							angle = angle_temp
 					esp.send_command("12, " + str(angle) + ", -1, move forward")
 					time.sleep(0.025)
 					if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
-						print(1)
-						time.sleep(0.033)
-						if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0: 
+						if turn_flag: 
 							state = States.TURNING_STATE
 							num_of_turn += 1
 							print(num_of_turn)
 							print("turning")
+						else:
+							turn_flag = 1
+					else:
+						turn_flag = 0
 					continue
 
 					if get_track_distance(track_right[is_clockwise][0], track_right[is_clockwise][1])[0] == is_clockwise:
