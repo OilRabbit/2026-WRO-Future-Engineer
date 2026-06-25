@@ -31,7 +31,7 @@ def RGB2HSV(rgb_list):
 	if delta_c == 0: h = 0
 	elif c_max == rgb_list[0] / 255: h = 60 * ((rgb_list[1] - rgb_list[2]) / (255 * delta_c) % 6)
 	elif c_max == rgb_list[1] / 255: h = 60 * ((rgb_list[2] - rgb_list[0]) / (255 * delta_c) + 2)
-	elif c_max == rgb_list[2] / 255: h = 60 * ((rgb_list[0] - rgb_list[1]) / (255 * delta_c) + 4)
+	elif c_max == rgb_list[2] / 255: h = 60 * ((rgb_list[2] - rgb_list[0]) / (255 * delta_c) + 4)
 	
 	if h < 0: h += 360
 	h /= 2
@@ -53,8 +53,8 @@ MAGENTA_UPPER = RGB2HSV([255, 0, 85])
 WHITE_LOWER = RGB2HSV([136, 136, 136])
 WHITE_UPPER = RGB2HSV([255, 214, 216])
 
-BLUE_LOWER = RGB2HSV([40, 47, 50]) # np.array([90, 40, 40]) # RGB2HSV([40, 47, 50])
-BLUE_UPPER = RGB2HSV([95, 0, 255]) # np.array([140, 255, 255]) # RGB2HSV([95, 0, 255]) 
+BLUE_LOWER = RGB2HSV([40, 47, 50]) 
+BLUE_UPPER = RGB2HSV([95, 0, 255]) 
 
 ORANGE_LOWER = np.array([0, 70, 70])
 ORANGE_UPPER = np.array([35, 255, 255])
@@ -114,10 +114,11 @@ def _scan_obstacle_thread():
 				time.sleep(0.01)
 				continue
 			hsv = _shared_hsv.copy()
-		    
+		
 		mask_r1 = cv2.inRange(hsv, RED_LOWER1, RED_UPPER1)
 		mask_r2 = cv2.inRange(hsv, RED_LOWER2, RED_UPPER2)
 		red_mask = cv2.bitwise_or(mask_r1, mask_r2)
+		
 		green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
 		
 		r_box = get_pillar_center(red_mask, min_area = 20)
@@ -145,7 +146,7 @@ def _scan_obstacle_thread():
 				nearest_obstacle["color"] = None
 		time.sleep(0.01)
 
-# Thread function for scanning the parking lot
+# Thread function for scanning the purple/magenta wall
 def _scan_parkinglot_thread():
 	global _shared_hsv, parkinglot_data, _display_masks
 	while True:
@@ -154,7 +155,7 @@ def _scan_parkinglot_thread():
 				time.sleep(0.01)
 				continue
 			hsv = _shared_hsv.copy()
-		    
+		
 		magenta_mask = cv2.inRange(hsv, MAGENTA_LOWER, MAGENTA_UPPER)
 		m_box = get_pillar_center(magenta_mask, min_area = 20)
 		with _data_lock:
@@ -173,7 +174,7 @@ def _scan_track_thread():
 				time.sleep(0.01)
 				continue
 			hsv = _shared_hsv.copy()
-		    
+		
 		raw_white_mask = cv2.inRange(hsv, WHITE_LOWER, WHITE_UPPER)
 		
 		mask_r1 = cv2.inRange(hsv, RED_LOWER1, RED_UPPER1)
@@ -199,13 +200,12 @@ def _scan_track_thread():
 				track_data["polygon"] = None
 		time.sleep(0.01)
 
-# Thread function for scanning the track
+# Main vision rendering layout thread
 def _vision_loop():
 	global _camera, _video_out, _shared_hsv, _output_frame
 	prev_time = 0
-    
 	empty_mask = np.zeros((360, 640), dtype = np.uint8)
-    
+	
 	while True:
 		frame = _camera.capture_array()
 		
@@ -262,11 +262,10 @@ def _vision_loop():
 		with _frame_lock:
 			_output_frame = buffer.tobytes()
 
-# The main function to start the vision and scanning process
 def start_vision_system(camera_instance, record_mp4=True):
 	global _camera, _video_out
 	_camera = camera_instance
-    
+	
 	if record_mp4:
 		fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 		timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -283,12 +282,10 @@ def start_vision_system(camera_instance, record_mp4=True):
 	threading.Thread(target=_vision_loop, daemon=True).start()
 	print("Vision: Activated")
 
-# Get the latest data of the nearest obstacle, parking lot, and the track
 def get_latest_data():
 	with _data_lock:
 		return nearest_obstacle.copy(), parkinglot_data.copy(), track_data.copy()
 
-# Function to fetch the frames to the web server for live streaming
 def _generate_web_frames():
 	global _output_frame, _frame_lock
 	while True:
@@ -298,24 +295,20 @@ def _generate_web_frames():
 			frame_bytes = _output_frame
 		yield (b'--frame\r\n'
 			b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-		time.sleep(0.02) 
+		time.sleep(0.02)
 
-# Display high-speed digital flipbook as live streaming
 @_app.route('/')
 def _video_feed():
 	return Response(_generate_web_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
-# Thread function to run the web server for live streaming
 def _run_server_thread(host, port):
 	_app.run(host=host, port=port, threaded=True, use_reloader=False)
 
-# Function to start the web server
 def start_web_server(host='0.0.0.0', port=5000):
 	t = threading.Thread(target=_run_server_thread, args=(host, port), daemon=True)
 	t.start()
 	print("Web Server Activated")
 
-# Clean up function to stop the camera
 def _cleanup_hardware():
 	global _camera, _video_out
 	if _camera is not None:
@@ -323,7 +316,6 @@ def _cleanup_hardware():
 	if _video_out is not None:
 		_video_out.release()
 
-# Safely output the video to mp4
 def stop_vision_system():
 	global _video_out
 	if _video_out is not None:
@@ -333,16 +325,14 @@ def stop_vision_system():
 
 atexit.register(_cleanup_hardware)
 
-# Check if the given point lies inside the polygon, and return the shortest distance to the nearest edge
 def get_track_distance(x, y):
 	with _data_lock:
 		poly = track_data["polygon"]
-	    
+	
 	if poly is None:
 		return False, 0.0
 	
 	raw_distance = cv2.pointPolygonTest(poly, (float(x), float(y)), True)
-	
 	is_inside = raw_distance >= 0
 	exact_distance = abs(raw_distance)
 	return is_inside, exact_distance
@@ -351,38 +341,18 @@ if __name__ == "__main__":
 	from picamera2 import Picamera2 as picam2
 	print("=======Initializing=======")
 	camera = picam2()
-	
 	full_sensor_res = camera.sensor_resolution
-	
 	config = camera.create_video_configuration(main={"size": (640, 360), "format": "BGR888"}, sensor={"output_size": full_sensor_res})
-	
 	camera.configure(config)
 	camera.start()
 	
-	print(camera.camera_configuration)
-	print("Camera: Activated")
-	
 	start_vision_system(camera, False)
-	
-	live_streaming = True
-	if live_streaming:
-		print("Streaming: Activated")
-		start_web_server(host='0.0.0.0', port=5000)
-	else:
-		print("Streaming: Not streaming")
-	
+	start_web_server(host='0.0.0.0', port=5000)
 	print("=======Initialized=======")
 	
 	try:
 		while True:
 			obstacle, parking, track = get_latest_data()
-			if obstacle["color"] == "RED":
-				pass
-			elif track["center_x"] != 0:
-				pass
 			time.sleep(0.02)
-	
 	except KeyboardInterrupt:
-		print("\nShutting down...")
-		stop_vision_system()
-		time.sleep(0.5)
+		pass

@@ -33,6 +33,7 @@ run_OC1 = False
 run_OC2 = False
 reset_OC = True
 num_of_turn = 0
+lap_count_oc1 = 0  # Track completed loops via purple wall signatures
 is_clockwise = True
 start_time = 0
 end_time = 0
@@ -44,6 +45,14 @@ turn_indi_1 = [320, 30]
 turn_indi_2 = [320, 60]
 sector_indi = [320, 50]
 turn_time = 0
+
+# Purple Wall Detector Config & Anti-Double-Count Time Locks
+last_purple_lap_time = 0.0          
+PURPLE_LAP_BUFFER = 3.0             
+MIN_PURPLE_AREA = 25                # Minimum contour area scaled size to confirm it's the wall
+
+# Persistent lockout flag for tracking when purple wall is actively on screen
+purple_wall_lockout_active = False
 
 front_turning_point = [320, 70]
 left_turning_point = [40, 200]
@@ -84,27 +93,20 @@ def send_command_logged(cmd_str):
                 last_action_logged = cmd_str
 
 def calculate_oc2_steering_bias(track_data, obstacle_data, current_angle):
-
-        # initialization for historical tracking
         if not hasattr(calculate_oc2_steering_bias, "was_dodging"):
                 calculate_oc2_steering_bias.was_dodging = False
                 calculate_oc2_steering_bias.last_dodge_dir = None
 
         target_angle = current_angle
 
-        # ==========================================
-        # WEIGHING - ADJUST THESE FOR SENSITIVITY
-        # ==========================================
-        base_kick = 30.0        # Forceful immediate punch away from pillars
-        gain_multiplier = 0.8   # Scaling size factor for obstacles
-        max_clamp = 85.0        # Sharper emergency saves near walls
-        deadzone_weigh = 3.0    # Detect pillars close to the screen boundaries
+        base_kick = 30.0        
+        gain_multiplier = 0.8   
+        max_clamp = 85.0        
+        deadzone_weigh = 3.0    
 
-        # COUNTER-STEER CONFIGURATION
-        COUNTER_STEER_FORCE = 25.0  # Magnitude of counter-steer
-        COUNTER_STEER_TIME = 0.08   # Time (seconds) to hold counter-steer
+        COUNTER_STEER_FORCE = 25.0  
+        COUNTER_STEER_TIME = 0.08   
 
-        # 2. Obstacle avoidance layer
         pillar_detected_this_frame = False
 
         if obstacle_data["color"] in ["RED", "GREEN"]:
@@ -135,27 +137,21 @@ def calculate_oc2_steering_bias(track_data, obstacle_data, current_angle):
                 else:
                         print("[AVOIDANCE_SKIP] Distance gap safe. Skipping bias modifier adjustment.")
 
-        # 3. Counter-Steer Recovery Pulse
-        # Triggers if a pillar was just cleared
         if not pillar_detected_this_frame and calculate_oc2_steering_bias.was_dodging:
                 print(f"[COUNTER-STEER RECOVERY] Pillar cleared! Executing stabilization correction.")
 
                 if calculate_oc2_steering_bias.last_dodge_dir == "RIGHT":
-                        # Dodged a RED pillar to the right -> Instantly snap LEFT to straighten
                         recovery_angle = -COUNTER_STEER_FORCE
                         target_angle += recovery_angle
                         print(f" -> counter action: Pulsing LEFT ({recovery_angle}) to catch alignment.")
                 else:
-                        # Dodged a GREEN pillar to the left -> Instantly snap RIGHT to straighten
                         recovery_angle = COUNTER_STEER_FORCE
                         target_angle += recovery_angle
                         print(f" -> counter action: Pulsing RIGHT (+{recovery_angle}) to catch alignment.")
 
-                # Reset memory
                 calculate_oc2_steering_bias.was_dodging = False
                 calculate_oc2_steering_bias.last_dodge_dir = None
 
-        # Always return the calculated target_angle as a number
         return target_angle
 
 state = States.INIT
@@ -169,11 +165,13 @@ try:
                                 angle = 0
                                 turn_time = 0
                                 num_of_turn = 0
+                                lap_count_oc1 = 0  
+                                last_purple_lap_time = 0.0 
+                                purple_wall_lockout_active = False
                                 is_clockwise = True
                                 turning_point = right_turning_point
                                 state = States.FIRST_SECTOR
                                 last_state = None
-                                # Clear function attributes on reset
                                 if hasattr(calculate_oc2_steering_bias, "was_dodging"):
                                         calculate_oc2_steering_bias.was_dodging = False
                                         calculate_oc2_steering_bias.last_dodge_dir = None
@@ -189,7 +187,7 @@ try:
                         send_command_logged("OC1")
                         start_time = time.perf_counter()
                         while run_OC1:
-                                end_time = time.perf_counter()
+                                current_frame_time = time.perf_counter()
                                 reply = esp_replyNprint()
                                 if reply == "EOC1":
                                         print("\n[FSM ALERT] EOC1 Signal Received from ESP32. Terminating run immediately.")
@@ -205,11 +203,32 @@ try:
                                 obstacle, parking, track = get_latest_data()
 
                                 # --------------------------------------------------------------
+                                # DYNAMIC LOCKOUT LOGIC: PURPLE WALL RANGE BOUNDARY WINDOW
+                                # --------------------------------------------------------------
+                                purple_area_check = (parking["width"] * parking["height"]) // 100
+                                
+                                # Condition A: Purple wall is scanned on screen
+                                if parking["center_x"] != 0 and purple_area_check >= MIN_PURPLE_AREA:
+                                        if not purple_wall_lockout_active:
+                                                print("[LOCKOUT ENGAGED] Purple wall entered frame. Pillar detection completely stopped.")
+                                                purple_wall_lockout_active = True
+                                
+                                # Condition B: Purple wall has completely gone out of the screen
+                                elif parking["center_x"] == 0:
+                                        if purple_wall_lockout_active:
+                                                print("[LOCKOUT RELEASED] Purple wall went completely off screen. Restoring pillar detection.")
+                                                purple_wall_lockout_active = False
+
+                                # If the lockout state is active, suppress all pillar calculations
+                                if purple_wall_lockout_active:
+                                        obstacle["color"] = None
+                                # --------------------------------------------------------------
+
+                                # --------------------------------------------------------------
                                 # FIRST SECTOR
                                 # --------------------------------------------------------------
                                 if state == States.FIRST_SECTOR:
                                         angle = calculate_oc2_steering_bias(track, obstacle, angle)
-
                                         print(f"[STEERING_DECISION] First Sector Output -> Speed: 8 | Combined Angle: {angle:.2f}")
                                         send_command_logged(f"8, {angle}, -1, move forward")
                                         time.sleep(0.025)
@@ -230,10 +249,6 @@ try:
                                                         print(f"[FSM_SUCCESS] Corner verified! Direction: {'CLOCKWISE' if is_clockwise else 'COUNTER-CLOCKWISE'}")
                                                         state = States.TURNING_STATE
                                                         num_of_turn += 1
-
-                                                        print(f"\n**************************************************")
-                                                        print(f">>>>>>>> [ TURN COUNT REGISTERED: {num_of_turn} / 12 ] <<<<<<<<")
-                                                        print(f"**************************************************\n")
                                                 else:
                                                         print("[FSM_STAGE_1_FAILED] False corner read on pass 2. Resuming straight line run.")
 
@@ -259,7 +274,6 @@ try:
                                 elif state == States.TURNING_STATE:
                                         base_turn_angle = (track["center_x"] - 320) / 0.4
                                         base_turn_angle = max(-100, min(100, base_turn_angle))
-
                                         angle = calculate_oc2_steering_bias(track, obstacle, base_turn_angle)
 
                                         print(f"[TURNING_ARC] Center Line Delta: {track['center_x'] - 320} | Final Arc Target Angle: {angle:.2f}")
@@ -270,13 +284,7 @@ try:
 
                                         if exit_landmark_detected == True:
                                                 if turn_time <= 0.3:
-                                                        print(f"[TURNING_REJECT] Corner landmark triggered too early ({turn_time:.3f}s). Reverting turn count registry.")
-                                                        num_of_turn -= 1
-
-                                                        print(f"\n--------------------------------------------------")
-                                                        print(f"-------- [ TURN COUNT REVERTED: {num_of_turn} / 12 ] --------")
-                                                        print(f"--------------------------------------------------\n")
-
+                                                        print(f"[TURNING_REJECT] Corner landmark triggered too early ({turn_time:.3f}s). Overriding old FSM turn count revert.")
                                                         state = States.RUN_SECTOR_STATE
                                                         turn_time = 0
                                                         angle = 0
@@ -290,8 +298,8 @@ try:
                                                         send_command_logged(f"10, {angle}, -1, turn")
                                                         time.sleep(0.02)
 
-                                                if num_of_turn == 12:
-                                                        print("[FSM_COMPLETION] Turn #12 registered! Redirecting to Final Stop Run Line.")
+                                                if lap_count_oc1 >= 3: 
+                                                        print("[FSM_COMPLETION] Objective loops cleared via Magenta Wall registry! Shifting to Stop Routine.")
                                                         state = States.LAST_RUN
                                                 else:
                                                         state = States.RUN_SECTOR_STATE
@@ -307,56 +315,75 @@ try:
                                         print(f"[DASH_RUN] Clearing intersection threshold. Straight run locking for 250ms.")
                                         send_command_logged("8, 0, -1, go forward")
                                         time.sleep(0.25)
-
-                                        if num_of_turn == 12:
-                                                print("[FSM_COMPLETION] Final Dash Complete. Redirecting to Final Stop Run Line.")
+                                        if lap_count_oc1 >= 3:
                                                 state = States.LAST_RUN
                                         else:
                                                 state = States.RUN_SECTOR_STATE
 
                                 # --------------------------------------------------------------
-                                # RUN SECTOR STATE
+                                # RUN SECTOR STATE 
                                 # --------------------------------------------------------------
                                 elif state == States.RUN_SECTOR_STATE:
                                         angle = calculate_oc2_steering_bias(track, obstacle, angle)
-
                                         print(f"[STEERING_DECISION] Cruise Sector Output -> Speed: 12 | Combined Angle: {angle:.2f}")
                                         send_command_logged(f"12, {angle}, -1, move forward")
                                         time.sleep(0.025)
 
+                                        # ---- MAGENTA CHROMATIC OVERLAY LAP COUNTER ----
+                                        purple_x = parking["center_x"]
+                                        purple_area = (parking["width"] * parking["height"]) // 100
+
+                                        if purple_x != 0 and purple_area >= MIN_PURPLE_AREA:
+                                                time_since_last_lap = current_frame_time - last_purple_lap_time
+                                                
+                                                if time_since_last_lap >= PURPLE_LAP_BUFFER:
+                                                        lap_count_oc1 += 1
+                                                        last_purple_lap_time = current_frame_time  # Set time-lock anchor
+                                                        
+                                                        print(f"\n🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮")
+                                                        print(f"[LAP REGISTERED] Magenta wall verified! Loop Count: [ {lap_count_oc1} / 3 ]")
+                                                        print(f"[TIME LOCK] Guard frame window active for {PURPLE_LAP_BUFFER} seconds.")
+                                                        print(f"🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮\n")
+                                                        
+                                                        if lap_count_oc1 >= 3:
+                                                                print("[OC1 METRIC PASSED] Target loop requirement achieved. Swapping to stop sequence.")
+                                                                state = States.LAST_RUN
+                                                                continue
+                                                else:
+                                                        remaining_lockout = PURPLE_LAP_BUFFER - time_since_last_lap
+                                                        print(f"[LAP BLOCK] Magenta marker active, but locked in debounce window. Shield: {remaining_lockout:.2f}s.")
+                                        # --------------------------------------------------------
+
+                                        # Keep scanning corner boundaries for tracking stability
                                         sector_indi1 = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
                                         sector_indi2 = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
 
                                         if sector_indi1 == False and sector_indi2 == True:
-                                                print("[CRUISE_FSM] Upcoming corner landmark detected on pass 1. Validating entry frame...")
+                                                print("[CRUISE_FSM] Upcoming corner landmark detected. Validating entry frame...")
                                                 time.sleep(0.033)
-
                                                 sector_indi1_retry = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
                                                 sector_indi2_retry = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
 
                                                 if sector_indi1_retry == False and sector_indi2_retry == True:
-                                                        print(f"[CRUISE_FSM_SUCCESS] Corner entry verified. Transferring control to TURNING_STATE.")
+                                                        print(f"[CRUISE_FSM_SUCCESS] Corner entry verified. Control transferred to TURNING_STATE.")
                                                         state = States.TURNING_STATE
-                                                        num_of_turn += 1
-
-                                                        print(f"\n**************************************************")
-                                                        print(f">>>>>>>> [ TURN COUNT REGISTERED: {num_of_turn} / 12 ] <<<<<<<<")
-                                                        print(f"**************************************************\n")
-                                                else:
-                                                        print("[CRUISE_FSM_FALSE] Intersection validation failed on pass 2. Disregarding.")
 
                                 # --------------------------------------------------------------
                                 # LAST RUN
                                 # --------------------------------------------------------------
                                 elif state == States.LAST_RUN:
-                                        print("[FINAL_LANE] Core loops complete. Decelerating and centering vehicle for stop line...")
+                                        print("[FINAL_LANE] Target loops complete. Decelerating and centering vehicle for stop line...")
                                         time.sleep(0.5)
                                         print("[FINAL_STOP] Execution finished. Sending absolute zero brake code down serial line.")
                                         send_command_logged("0, 0, 0, motor stop")
+                                        run_OC1 = False
                                         break
 
                                 time.sleep(0.005)
 
+                # ======================================================================
+                # RUN OC2 BLOCK (Bypassed)
+                # ======================================================================
                 elif run_OC2:
                         send_command_logged("OC2")
                         while run_OC2:

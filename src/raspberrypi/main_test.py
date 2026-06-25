@@ -6,6 +6,13 @@ from camera.camera_utils import start_vision_system, start_web_server, get_lates
 from picamera2 import Picamera2 as picam2
 from enum import Enum
 
+"""
+================================================================================
+WRO 2026 FUTURE ENGINEERS - SELF-DRIVING CARS
+CORE CHALLENGE 1 (OC1) - FIXED TURNING STATE STABILITY
+================================================================================
+"""
+
 # ESP communication and Picam init
 print("======= Init =======")
 
@@ -44,39 +51,35 @@ turn_indi_2 = [320, 60]  # check when to turn
 sector_indi = [320, 50]  # check when is sector
 turn_time = 0
 
+# GLOBAL SPEED VARIABLE
+speed = 18
+
 # PD Tracking Memory for stabilizing the ultra-tight inner wall path
 last_track_error = 0.0
 
-left_turning_point = [40, 140]
-right_turning_point = [600, 140] 
+left_turning_point = [40, 180]
+right_turning_point = [600, 180]
 turning_point = right_turning_point
 
-# Central vertical curtain parameters
-FRONT_SCAN_Y_START = 0    
-FRONT_SCAN_Y_END = 140    
-FRONT_SCAN_STEP = 5       
-
-# Radar scanning bands matching baseline setup
-RADAR_COUNTER_CW = [140, 230, 320]     
-RADAR_CLOCKWISE = [320, 410, 500]      
+# CENTRAL VERTICAL SCURTAIN PARAMETERS (For see-front-wall array)
+FRONT_SCAN_Y_START = 140
+FRONT_SCAN_Y_END = 360
+FRONT_SCAN_STEP = 5
+FIXED_FRONT_COLUMNS = [240, 320, 400] # Checks left, center, right columns ahead
 
 # FIRST SECTOR HORIZONTAL RANGES
-# these values are highly related to the sensitivity of the robot turning around the corners
-INIT_SCAN_Y = 140
-LEFT_SCAN_X_START = 20
-LEFT_SCAN_X_END = 120
-RIGHT_SCAN_X_START = 520               
-RIGHT_SCAN_X_END = 620                 
-SCAN_STEP_X = 8
+INIT_SCAN_Y = 240
 
-# ======================================================================
-# TUNED: SAFETY ZONES (15 Pixels from Screen Edges)
-# ======================================================================
-track_left = [15, 280]                 
-track_right = [625, 280]               
+# ULTRA-LIGHTWEIGHT SCAN TARGET POINTS (Drastically lowers loop load)
+LEFT_SCAN_POINTS = [0, 30, 70]
+RIGHT_SCAN_POINTS = [640, 610, 570]
+
+# SAFETY BOUNDARIES (15 Pixels from Screen Margins)
+track_left = [40, 40]
+track_right = [600, 40]
 
 # Retained early-reaction finish line configuration
-ending_point = [320, 110]
+ending_point = [320, 280]
 
 # States
 class States(Enum):
@@ -88,7 +91,7 @@ class States(Enum):
     RUN_SECTOR_STATE = 5
     LAST_RUN = 6
 
-# Dynamic multi-line vertical range check 
+# Dynamic multi-line vertical range check for front wall detection
 def check_front_wall_range(columns_to_scan):
     for x_pos in columns_to_scan:
         for y in range(FRONT_SCAN_Y_START, FRONT_SCAN_Y_END + 1, FRONT_SCAN_STEP):
@@ -96,15 +99,15 @@ def check_front_wall_range(columns_to_scan):
                 return True
     return False
 
-# Horizontal side sector range scanners for startup accuracy
+# Highly simplified check functions reading fixed coordinates without wide loops
 def check_left_sector_range():
-    for x in range(LEFT_SCAN_X_START, LEFT_SCAN_X_END + 1, SCAN_STEP_X):
+    for x in LEFT_SCAN_POINTS:
         if get_track_distance(x, INIT_SCAN_Y)[0]:
             return True
     return False
 
 def check_right_sector_range():
-    for x in range(RIGHT_SCAN_X_START, RIGHT_SCAN_X_END + 1, SCAN_STEP_X):
+    for x in RIGHT_SCAN_POINTS:
         if get_track_distance(x, INIT_SCAN_Y)[0]:
             return True
     return False
@@ -145,6 +148,7 @@ def send_command_logged(cmd_str):
 
 state = States.INIT
 last_state = None
+first_sector_start_time = None  # Tracks 1s ignore window for launch
 
 try:
     print("IDLE")
@@ -160,6 +164,7 @@ try:
                 state = States.FIRST_SECTOR
             reset_OC = False
             last_state = None
+            first_sector_start_time = None
             print("Resetted")
             continue
 
@@ -183,42 +188,27 @@ try:
 
                 _, _, track = get_latest_data()
 
-                # Determine active radar setup dynamically based on current tracking state
-                active_radar = RADAR_CLOCKWISE if is_clockwise else RADAR_COUNTER_CW
-
                 # ======================================================================
-                # 1. FIRST SECTOR
+                # 1. FIRST SECTOR (OPTIMIZED FIXED POINT SCANNING + 1s DELAY)
                 # ======================================================================
                 if state == States.FIRST_SECTOR:
                     send_command_logged("12, 0, -1, go forward")
 
                     see_left_zone = check_left_sector_range()
                     see_right_zone = check_right_sector_range()
-                    see_front_wall_range = check_front_wall_range(active_radar)
+                    time.sleep(0.05)
 
-                    if see_left_zone:
-                        print(f"[STARTUP LOCK] Left corridor array triggered! Orientation: Counter-Clockwise.")
-                        is_clockwise = False
-                        turning_point = left_turning_point
-                        state = States.WAIT_TURN_STATE
-                        continue
-
-                    elif see_right_zone:
-                        print(f"[STARTUP LOCK] Right corridor array triggered! Orientation: Clockwise.")
+                    if see_right_zone:
+                        print(f"[STARTUP LOCK] Left corridor spotted! Orientation: Counter-Clockwise.")
                         is_clockwise = True
                         turning_point = right_turning_point
                         state = States.WAIT_TURN_STATE
                         continue
 
-                    elif see_front_wall_range:
-                        if track["center_x"] < 320:
-                            print(f"[STARTUP FAILSAFE] Front curtain triggered! Bias Left -> Counter-Clockwise.")
-                            is_clockwise = False
-                            turning_point = left_turning_point
-                        else:
-                            print(f"[STARTUP FAILSAFE] Front curtain triggered! Bias Right -> Clockwise.")
-                            is_clockwise = True
-                            turning_point = right_turning_point
+                    elif see_left_zone:
+                        print(f"[STARTUP LOCK] Right corridor spotted! Orientation: Clockwise.")
+                        is_clockwise = False
+                        turning_point = left_turning_point
                         state = States.WAIT_TURN_STATE
                         continue
 
@@ -226,27 +216,36 @@ try:
                 # 2. WAIT TURN STATE
                 # ======================================================================
                 elif state == States.WAIT_TURN_STATE:
-                    send_command_logged("15, 0, 1, encoder approach")
+                    send_command_logged("13, 0, 1, encoder approach")
 
                     see_target_side = get_track_distance(turning_point[0], turning_point[1])[0]
-                    see_front_wall_range = check_front_wall_range(active_radar)
 
-                    if reply == "DEGREE_DONE" or see_target_side or see_front_wall_range:
+                    if reply == "DEGREE_DONE" or see_target_side:
                         state = States.TURNING_STATE
                         num_of_turn += 1
-                        print(f"[FSM] Dynamic radar array triggered! Moving to turn {num_of_turn}")
+                        print(f"[FSM] Turning condition reached. Moving to turn {num_of_turn}")
                         time.sleep(0.1)
                         continue
 
                 # ======================================================================
-                # 3. TURNING STATE 
+                # 3. TURNING STATE (FIXED MATH BIAS + LOOP CATCH MECHANISM)
                 # ======================================================================
                 elif state == States.TURNING_STATE:
                     angle = (track["center_x"] - 320) / 0.4
-                    if angle > 100: angle = 100
-                    elif angle < -100: angle = -100
 
-                    send_command_logged(f"15, {angle}, -1, turn")
+                    if angle > 100:
+                        angle = 100
+                    elif angle < -100:
+                        angle = -100
+
+                    # Fixed Sign Inversions: Force assertive turning values if tracking slips
+                    if is_clockwise == True and angle < 15:
+                        angle = 60  # Keep turning right confidently
+                    if is_clockwise == False and angle > -15:
+                        angle = -60 # Keep turning left confidently
+
+                    turn_speed = int(speed * 0.75)
+                    send_command_logged(f"{turn_speed}, {int(angle)}, -1, turn")
 
                     is_sector_detected = get_track_distance(sector_indi[0], sector_indi[1])[0]
 
@@ -259,32 +258,35 @@ try:
                             last_track_error = 0.0
                             continue
 
+                        # Clean deceleration block
                         buffer = angle / 5
                         for i in range(4):
                             angle -= buffer
-                            send_command_logged(f"12, {angle}, -1, turn")
+                            send_command_logged(f"12, {int(angle)}, -1, turn")
                             time.sleep(0.02)
 
+                        # Explicit state jump definitions avoiding drop-through glitching
                         if num_of_turn == 12:
                             state = States.LAST_RUN
                         else:
                             state = States.DASH_AFTER_TURNING_STATE
                         turn_time = 0
+                        continue # Escape frame gracefully
                     else:
                         time.sleep(0.025)
                         turn_time += 0.025
                         continue
 
                 # ======================================================================
-                # 4. DASH AFTER TURNING STATE 
+                # 4. DASH AFTER TURNING STATE
                 # ======================================================================
                 elif state == States.DASH_AFTER_TURNING_STATE:
                     if is_clockwise:
-                        send_command_logged("20, 35, 150, violent dive right")
+                        send_command_logged(f"{speed}, 35, 150, violent dive right")
                     else:
-                        send_command_logged("20, -35, 150, violent dive left")
+                        send_command_logged(f"{speed}, -35, 150, violent dive left")
 
-                    time.sleep(0.14)
+                    time.sleep(0.01)
 
                     if num_of_turn == 12:
                         state = States.LAST_RUN
@@ -293,48 +295,48 @@ try:
                         last_track_error = 0.0
 
                 # ======================================================================
-                # 5. RUN SECTOR STATE 
+                # 5. RUN SECTOR STATE
                 # ======================================================================
                 elif state == States.RUN_SECTOR_STATE:
                     see_target_side = get_track_distance(turning_point[0], turning_point[1])[0]
-                    see_front_wall_range = check_front_wall_range(active_radar)
+                    see_front_wall = check_front_wall_range(FIXED_FRONT_COLUMNS)
 
-                    if see_target_side or see_front_wall_range:
-                        print(f"[VISION LOCK-ON] Imminent wall registered by dynamic radar. Moving to corner approach.")
+                    if see_target_side or see_front_wall:
+                        print(f"[VISION LOCK-ON] Wall detected ahead (side={see_target_side}, front={see_front_wall}). Transitioning to corner approach.")
                         state = States.WAIT_TURN_STATE
                         continue
 
-                    # Evaluates proximity based on new [15] and [625] coordinates
                     too_close_left = get_track_distance(track_left[0], track_left[1])[0]
                     too_close_right = get_track_distance(track_right[0], track_right[1])[0]
 
-                    Kp = 2.6
-                    Kd = 1.2
+                    Kp = 2.4
+                    Kd = 1.4
+                    reduce_factor = 4
 
                     if is_clockwise:
                         if too_close_right:
-                            base_angle = -40  
+                            base_angle = -50
                             current_error = 0.0
                         else:
-                            current_error = track["center_x"] - 595
+                            current_error = (595 - track["center_x"]) / reduce_factor                    #positive turn
                             derivative = current_error - last_track_error
                             base_angle = (current_error * Kp) + (derivative * Kd)
                     else:
                         if too_close_left:
-                            base_angle = 40   
+                            base_angle = 50
                             current_error = 0.0
                         else:
-                            current_error = track["center_x"] - 45
+                            current_error = (45 - track["center_x"]) / reduce_factor
                             derivative = current_error - last_track_error
                             base_angle = (current_error * Kp) + (derivative * Kd)
 
                     last_track_error = current_error
 
                     base_angle = max(-85, min(85, base_angle))
-                    send_command_logged(f"20, {int(base_angle)}, -1, magnet runner")
+                    send_command_logged(f"{speed}, {int(base_angle)}, -1, magnet runner")
 
                 # ======================================================================
-                # 6. LAST RUN 
+                # 6. LAST RUN
                 # ======================================================================
                 elif state == States.LAST_RUN:
                     send_command_logged("-10, 0, -1, search final line")
