@@ -9,7 +9,7 @@ from enum import Enum
 """
 ================================================================================
 WRO 2026 FUTURE ENGINEERS - SELF-DRIVING CARS
-CORE CHALLENGE 1 (OC1) - FIXED TURNING STATE STABILITY
+CORE CHALLENGE 1 (OC1) - EDGE DISTANCE SCANNING DIRECTION LOGIC
 ================================================================================
 """
 
@@ -67,16 +67,12 @@ FRONT_SCAN_Y_END = 360
 FRONT_SCAN_STEP = 5
 FIXED_FRONT_COLUMNS = [240, 320, 400] # Checks left, center, right columns ahead
 
-# FIRST SECTOR HORIZONTAL RANGES
-INIT_SCAN_Y = 240
-
-# ULTRA-LIGHTWEIGHT SCAN TARGET POINTS (Drastically lowers loop load)
-LEFT_SCAN_POINTS = [0, 30, 70]
-RIGHT_SCAN_POINTS = [640, 610, 570]
+# HORIZONTAL SCAN SCANNING ROW FOR DIRECTION
+INIT_SCAN_Y = 220 
 
 # SAFETY BOUNDARIES (15 Pixels from Screen Margins)
-track_left = [40, 40]
-track_right = [600, 40]
+track_left = [40, 280]
+track_right = [600, 280]
 
 # Retained early-reaction finish line configuration
 ending_point = [320, 280]
@@ -99,18 +95,19 @@ def check_front_wall_range(columns_to_scan):
                 return True
     return False
 
-# Highly simplified check functions reading fixed coordinates without wide loops
-def check_left_sector_range():
-    for x in LEFT_SCAN_POINTS:
+# Scan from left edge (0) inward to find where the left wall starts
+def get_left_wall_distance():
+    for x in range(0, 320, 10):
         if get_track_distance(x, INIT_SCAN_Y)[0]:
-            return True
-    return False
+            return x  # Returns pixel distance from left edge
+    return 320
 
-def check_right_sector_range():
-    for x in RIGHT_SCAN_POINTS:
+# Scan from right edge (640) inward to find where the right wall starts
+def get_right_wall_distance():
+    for x in range(640, 320, -10):
         if get_track_distance(x, INIT_SCAN_Y)[0]:
-            return True
-    return False
+            return (640 - x)  # Returns pixel distance from right edge
+    return 320
 
 # Hardened function for receiving messages from ESP, intercepting connection dropped issues safely
 def esp_replyNprint():
@@ -157,8 +154,8 @@ try:
             num_of_turn = 0
             is_clockwise = True
             turning_point = right_turning_point
-            track_left = [15, 280]
-            track_right = [625, 280]
+            track_left = [40, 280]
+            track_right = [600, 280]
             last_track_error = 0.0
             if run_OC1:
                 state = States.FIRST_SECTOR
@@ -189,34 +186,37 @@ try:
                 _, _, track = get_latest_data()
 
                 # ======================================================================
-                # 1. FIRST SECTOR (OPTIMIZED FIXED POINT SCANNING + 1s DELAY)
+                # 1. FIRST SECTOR (INWARD EDGE-DISTANCE CALCULATION)
                 # ======================================================================
                 if state == States.FIRST_SECTOR:
-                    send_command_logged("12, 0, -1, go forward")
+                    temp_speed = int(speed * 0.75)
+                    send_command_logged(f"{temp_speed}, 0, 1, go forward")
 
-                    see_left_zone = check_left_sector_range()
-                    see_right_zone = check_right_sector_range()
-                    time.sleep(0.05)
+                    left_wall_dist = get_left_wall_distance()
+                    right_wall_dist = get_right_wall_distance()
+                    time.sleep(0.03)
 
-                    if see_right_zone:
-                        print(f"[STARTUP LOCK] Left corridor spotted! Orientation: Counter-Clockwise.")
-                        is_clockwise = True
-                        turning_point = right_turning_point
-                        state = States.WAIT_TURN_STATE
-                        continue
-
-                    elif see_left_zone:
-                        print(f"[STARTUP LOCK] Right corridor spotted! Orientation: Clockwise.")
-                        is_clockwise = False
-                        turning_point = left_turning_point
-                        state = States.WAIT_TURN_STATE
-                        continue
+                    # A larger distance means it took longer to hit a wall -> that side is open space!
+                    if abs(left_wall_dist - right_wall_dist) > 20: # 20px threshold to filter noise
+                        if left_wall_dist > right_wall_dist:
+                            print(f"[STARTUP LOCK] Left side open space deeper ({left_wall_dist}px vs {right_wall_dist}px). Corridor is LEFT: Counter-Clockwise.")
+                            is_clockwise = False
+                            turning_point = left_turning_point
+                            state = States.WAIT_TURN_STATE
+                            continue
+                        else:
+                            print(f"[STARTUP LOCK] Right side open space deeper ({right_wall_dist}px vs {left_wall_dist}px). Corridor is RIGHT: Clockwise.")
+                            is_clockwise = True
+                            turning_point = right_turning_point
+                            state = States.WAIT_TURN_STATE
+                            continue
 
                 # ======================================================================
-                # 2. WAIT TURN STATE
+                # 2. WAIT TURN STATE (ORIGINAL SPATIAL COORDINATE CHECK)
                 # ======================================================================
                 elif state == States.WAIT_TURN_STATE:
-                    send_command_logged("13, 0, 1, encoder approach")
+                    temp_speed = int(speed * 0.6)
+                    send_command_logged(f"{temp_speed}, 0, 1, encoder approach")
 
                     see_target_side = get_track_distance(turning_point[0], turning_point[1])[0]
 
@@ -224,7 +224,7 @@ try:
                         state = States.TURNING_STATE
                         num_of_turn += 1
                         print(f"[FSM] Turning condition reached. Moving to turn {num_of_turn}")
-                        time.sleep(0.1)
+                        time.sleep(0.05)
                         continue
 
                 # ======================================================================
@@ -295,22 +295,29 @@ try:
                         last_track_error = 0.0
 
                 # ======================================================================
-                # 5. RUN SECTOR STATE
+                # 5. RUN SECTOR STATE (DIRECTION-BASED BOUNDARY GUARD LOGIC)
                 # ======================================================================
                 elif state == States.RUN_SECTOR_STATE:
                     see_target_side = get_track_distance(turning_point[0], turning_point[1])[0]
                     see_front_wall = check_front_wall_range(FIXED_FRONT_COLUMNS)
-
-                    if see_target_side or see_front_wall:
-                        print(f"[VISION LOCK-ON] Wall detected ahead (side={see_target_side}, front={see_front_wall}). Transitioning to corner approach.")
-                        state = States.WAIT_TURN_STATE
-                        continue
-
+                    
                     too_close_left = get_track_distance(track_left[0], track_left[1])[0]
                     too_close_right = get_track_distance(track_right[0], track_right[1])[0]
 
-                    Kp = 2.4
-                    Kd = 1.4
+                    # Change state logic guarded by specific tracking boundaries
+                    should_transition = False
+                    if is_clockwise and (see_target_side or see_front_wall) and not too_close_right:
+                        should_transition = True
+                    elif not is_clockwise and (see_target_side or see_front_wall) and not too_close_left:
+                        should_transition = True
+
+                    if should_transition:
+                        print(f"[VISION LOCK-ON] Target detected while clear of outer bounds. Transitioning to corner approach.")
+                        state = States.WAIT_TURN_STATE
+                        continue
+
+                    Kp = 1.4
+                    Kd = 0.8
                     reduce_factor = 4
 
                     if is_clockwise:
@@ -318,7 +325,7 @@ try:
                             base_angle = -50
                             current_error = 0.0
                         else:
-                            current_error = (595 - track["center_x"]) / reduce_factor                    #positive turn
+                            current_error = (595 - track["center_x"]) / reduce_factor
                             derivative = current_error - last_track_error
                             base_angle = (current_error * Kp) + (derivative * Kd)
                     else:
@@ -339,7 +346,8 @@ try:
                 # 6. LAST RUN
                 # ======================================================================
                 elif state == States.LAST_RUN:
-                    send_command_logged("-10, 0, -1, search final line")
+                    send_command_logged("50, 0, 200, search final line")
+                    send_command_logged("0, 0, 100, motor stop")
 
                     if get_track_distance(ending_point[0], ending_point[1])[0]:
                         print("[VISION SUCCESS] Final wall spotted early! Initiating braking sequence.")

@@ -409,9 +409,4 @@ try:
 except KeyboardInterrupt:
         print("\nShutting down software pipeline gracefully...")
         try:
-                esp.send_command("0, 0, 0, emergency_stop")
-        except Exception:
-                pass
-        esp.disconnect()
-        stop_vision_system()
-        time.sleep(0.5)
+
