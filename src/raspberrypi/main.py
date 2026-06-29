@@ -12,8 +12,16 @@ print("======= Init =======")
 esp = ESP32Communicator()
 esp.connect()
 camera = picam2()
-full_sensor_res = camera.sensor_resolution
-config = camera.create_video_configuration(main={"size": (640, 360), "format": "BGR888"},sensor={"output_size": full_sensor_res})
+video_size = (640, 360)
+sensor_video_size = (2304, 1296)
+target_frame_duration_us = 33333
+config = camera.create_video_configuration(
+        main={"size": video_size, "format": "BGR888"},
+        sensor={"output_size": sensor_video_size},
+        controls={"FrameDurationLimits": (target_frame_duration_us, target_frame_duration_us)},
+        buffer_count=4,
+        queue=False,
+)
 camera.configure(config)
 camera.start()
 print("Camera: Activated")
@@ -92,6 +100,10 @@ def send_command_logged(cmd_str):
         if cmd_str != last_action_logged:
                 print(f"[ESP_OUT] Sent Command: {cmd_str}")
                 last_action_logged = cmd_str
+
+def stop_vehicle(reason):
+        print(f"[STOP] {reason}")
+        send_command_logged("0, 0, 0, motor stop")
 
 def calculate_oc2_steering_bias(track_data, obstacle_data, current_angle):
         if not hasattr(calculate_oc2_steering_bias, "was_dodging"):
@@ -192,6 +204,7 @@ try:
                                 reply = esp_replyNprint()
                                 if reply == "EOC1":
                                         print(f"\n[{state.name}][FSM ALERT] EOC1 Signal Received from ESP32. Terminating run immediately.")
+                                        stop_vehicle("OC1 stop requested by ESP32")
                                         run_OC1 = False
                                         break
 
@@ -390,6 +403,7 @@ try:
                         while run_OC2:
                                 reply = esp_replyNprint()
                                 if reply == "EOC2":
+                                        stop_vehicle("OC2 stop requested by ESP32")
                                         run_OC2 = False
                                         break
                                 time.sleep(0.005)

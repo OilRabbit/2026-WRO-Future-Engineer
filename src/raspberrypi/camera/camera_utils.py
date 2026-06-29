@@ -110,10 +110,10 @@ def _scan_obstacle_thread():
 	global _shared_hsv, nearest_obstacle, _display_masks
 	while True:
 		with _hsv_lock:
-			if _shared_hsv is None:
-				time.sleep(0.01)
-				continue
-			hsv = _shared_hsv.copy()
+			hsv = _shared_hsv
+		if hsv is None:
+			time.sleep(0.01)
+			continue
 		    
 		mask_r1 = cv2.inRange(hsv, RED_LOWER1, RED_UPPER1)
 		mask_r2 = cv2.inRange(hsv, RED_LOWER2, RED_UPPER2)
@@ -150,10 +150,10 @@ def _scan_parkinglot_thread():
 	global _shared_hsv, parkinglot_data, _display_masks
 	while True:
 		with _hsv_lock:
-			if _shared_hsv is None:
-				time.sleep(0.01)
-				continue
-			hsv = _shared_hsv.copy()
+			hsv = _shared_hsv
+		if hsv is None:
+			time.sleep(0.01)
+			continue
 		    
 		magenta_mask = cv2.inRange(hsv, MAGENTA_LOWER, MAGENTA_UPPER)
 		m_box = get_pillar_center(magenta_mask, min_area = 20)
@@ -169,10 +169,10 @@ def _scan_track_thread():
 	global _shared_hsv, track_data, _display_masks
 	while True:
 		with _hsv_lock:
-			if _shared_hsv is None:
-				time.sleep(0.01)
-				continue
-			hsv = _shared_hsv.copy()
+			hsv = _shared_hsv
+		if hsv is None:
+			time.sleep(0.01)
+			continue
 		    
 		raw_white_mask = cv2.inRange(hsv, WHITE_LOWER, WHITE_UPPER)
 		
