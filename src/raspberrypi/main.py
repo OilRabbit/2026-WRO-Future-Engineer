@@ -200,70 +200,70 @@ try:
                         send_command_logged("OC1")
                         start_time = time.perf_counter()
                         while run_OC1:
-                        	reply = esp_replyNprint()
-                        	if reply == "EOC1":
-                        		print(f"\n[{state.name}][FSM ALERT] EOC1 Signal Received from ESP32. Terminating run immediately.")
-                        		stop_vehicle("OC1 stop requested by ESP32")
-                        		run_OC1 = False
-                        		break
-                        	_, _, track = get_latest_data()
+                                reply = esp_replyNprint()
+                                if reply == "EOC1":
+                                        print(f"\n[{state.name}][FSM ALERT] EOC1 Signal Received from ESP32. Terminating run immediately.")
+                                        stop_vehicle("OC1 stop requested by ESP32")
+                                        run_OC1 = False
+                                        break
+                                _, _, track = get_latest_data()
 
-                        	if state == States.FIRST_SECTOR:
-					esp.send_command("10, 0, -1, go forward")
-					while get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
-						time.sleep(0.005)
-					if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True:
-						is_clockwise = False
-						turning_point = left_turning_point
-						track_left = [0, 360]
-						track_right = [40, 360]
-						state = WAIT_TURN_STATE
-					continue
-								
-				#Wait turn
-				elif state == WAIT_TURN_STATE:
-					esp.send_command("10, 0, 100, wait turn")
-					state = TURNING_STATE
-					continue
-				
-				#Turn 
-				elif state == TURNING_STATE:
-					num_of_turn += 1
-					esp.send_command("10, 70, 200, turn")
-					state = DASH_AFTER_TURNING_STATE
-					continue
-				
-				#Dash to pass the corner
-				elif state == DASH_AFTER_TURING_STATE:
-					esp.send_command("10, 0, 100, go forward")
-					if num_of_turn == 12:
-						state = LAST_RUN
-					else:
-						state = RUN_SECTOR_STATE
-					continue
-				
-				#Run sector and keep a certain distance from the inner barrier
-				elif state == RUN_SECTOR_STATE:
-					if (get_track_distance(track_right[0], track_right[1])[0] == True and is_clockwise) or (get_track_distance(track_left[0], track_left[1])[0] == True and not is_clockwise):
-						esp.send_command("10, 10, -1, move right")
-					elif (get_track_distance(track_left[0], track_left[1])[0] == False and is_clockwise) or (get_track_distance(track_right[0], track_right[1])[0] == False and not is_clockwise):
-						esp.send_command("10, 10, -1, move left")
-					if get_track_distance(turning_point[0], turning_point[1])[0] == True:
-						state = WAIT_TURN_STATE
-					continue
-	
-				#Last forward to stop
-				elif state == LAST_RUN:
-					esp.send_command("10, 0, -1, move forward")
-					#Wait until the ending_point reach the wall in front of the robot
-					while get_track_distance(ending_point[0], ending_point[1])[0] == True:
-						time.sleep(0.005)
-					esp.send_command("0, 0, 0, motor stop")
-					end_time = time.pref_counter()
-					break
-	
-				# End of OC1 FSM #
-				time.sleep(0.005)
+                                if state == States.FIRST_SECTOR:
+                                        esp.send_command("10, 0, -1, go forward")
+                                        while get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
+                                                time.sleep(0.005)
+                                        if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True:
+                                                is_clockwise = False
+                                                turning_point = left_turning_point
+                                                track_left = [0, 360]
+                                                track_right = [40, 360]
+                                                state = WAIT_TURN_STATE
+                                        continue
+
+                                # Wait turn
+                                elif state == WAIT_TURN_STATE:
+                                        esp.send_command("10, 0, 100, wait turn")
+                                        state = TURNING_STATE
+                                        continue
+
+                                # Turn
+                                elif state == TURNING_STATE:
+                                        num_of_turn += 1
+                                        esp.send_command("10, 70, 200, turn")
+                                        state = DASH_AFTER_TURNING_STATE
+                                        continue
+
+                                # Dash to pass the corner
+                                elif state == DASH_AFTER_TURING_STATE:
+                                        esp.send_command("10, 0, 100, go forward")
+                                        if num_of_turn == 12:
+                                                state = LAST_RUN
+                                        else:
+                                                state = RUN_SECTOR_STATE
+                                        continue
+
+                                # Run sector and keep a certain distance from the inner barrier
+                                elif state == RUN_SECTOR_STATE:
+                                        if (get_track_distance(track_right[0], track_right[1])[0] == True and is_clockwise) or (get_track_distance(track_left[0], track_left[1])[0] == True and not is_clockwise):
+                                                esp.send_command("10, 10, -1, move right")
+                                        elif (get_track_distance(track_left[0], track_left[1])[0] == False and is_clockwise) or (get_track_distance(track_right[0], track_right[1])[0] == False and not is_clockwise):
+                                                esp.send_command("10, 10, -1, move left")
+                                        if get_track_distance(turning_point[0], turning_point[1])[0] == True:
+                                                state = WAIT_TURN_STATE
+                                        continue
+
+                                # Last forward to stop
+                                elif state == LAST_RUN:
+                                        esp.send_command("10, 0, -1, move forward")
+                                        # Wait until the ending_point reach the wall in front of the robot
+                                        while get_track_distance(ending_point[0], ending_point[1])[0] == True:
+                                                time.sleep(0.005)
+                                        esp.send_command("0, 0, 0, motor stop")
+                                        end_time = time.pref_counter()
+                                        break
+
+                                # End of OC1 FSM #
+                                time.sleep(0.005)
                 elif run_OC2:
                         send_command_logged("OC2")
                         while run_OC2:
