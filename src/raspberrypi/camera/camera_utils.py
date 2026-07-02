@@ -198,11 +198,11 @@ def _vision_loop():
 		fps = 1 / (curr_time - prev_time) if prev_time > 0 else 0
 		prev_time = curr_time
 	
-		display_frame = frame.copy()
+		display_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 		cv2.putText(display_frame, f"FPS: {int(fps)}", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
 		# print(fps)
 
-		hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+		hsv_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
 		with _hsv_lock:
 			_shared_hsv = hsv_frame
 
@@ -366,7 +366,7 @@ if __name__ == "__main__":
 	target_frame_duration_us = 10000
 	
 	config = camera.create_video_configuration(
-		main={"size": video_size, "format": "BGR888"},
+		main={"size": video_size, "format": "RGB888"},
 		sensor={"output_size": sensor_video_size},
 		controls={"FrameDurationLimits": (target_frame_duration_us, target_frame_duration_us)},
 		buffer_count=4,
