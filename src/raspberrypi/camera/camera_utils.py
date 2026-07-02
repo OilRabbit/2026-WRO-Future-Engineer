@@ -61,8 +61,8 @@ ORANGE_UPPER = np.array([35, 255, 255])
 
 # Get the center coordinates, width and height of a pillar with specific filter
 def get_pillar_center(mask, min_area = 20):
-	mask = cv2.erode(mask, None, iterations=2)
-	mask = cv2.dilate(mask, None, iterations=2)
+	mask = cv2.erode(mask, None, iterations=1)
+	mask = cv2.dilate(mask, None, iterations=1)
 	contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 	if contours:
 		largest_contour = max(contours, key=cv2.contourArea)
@@ -77,8 +77,8 @@ def get_pillar_center(mask, min_area = 20):
 
 # Get the center of mass coordinates of the largest white polygon
 def get_track_polygon(mask, min_area = 20):
-	mask = cv2.erode(mask, None, iterations = 2)
-	mask = cv2.dilate(mask, None, iterations = 2)
+	mask = cv2.erode(mask, None, iterations = 1)
+	mask = cv2.dilate(mask, None, iterations = 1)
 	contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 	if contours:
 		largest_contour = max(contours, key = cv2.contourArea)
@@ -180,7 +180,8 @@ def _vision_loop():
 	
 		display_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 		cv2.putText(display_frame, f"FPS: {int(fps)}", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-	
+		# print(fps)
+
 		hsv_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
 		with _hsv_lock:
 			_shared_hsv = hsv_frame
