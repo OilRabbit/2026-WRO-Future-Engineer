@@ -9,6 +9,8 @@ from flask import Flask, Response
 _app = Flask(__name__)
 _camera = None
 _video_out = None
+_record_mp4 = False
+_video_path = None
 _output_frame = None
 _frame_lock = threading.Lock()
 _shared_hsv = None
@@ -166,10 +168,8 @@ def _process_track(hsv, red_mask, green_mask):
 
 # Thread function for scanning the track
 def _vision_loop():
-	global _camera, _video_out, _shared_hsv, _output_frame
+	global _camera, _video_out, _shared_hsv, _output_frame, _record_mp4, _video_path
 	prev_time = 0
-    
-	empty_mask = np.zeros((360, 640), dtype = np.uint8)
     
 	while True:
 		frame = _camera.capture_array()
@@ -178,11 +178,11 @@ def _vision_loop():
 		fps = 1 / (curr_time - prev_time) if prev_time > 0 else 0
 		prev_time = curr_time
 	
-		display_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+		display_frame = frame.copy()
 		cv2.putText(display_frame, f"FPS: {int(fps)}", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
 		# print(fps)
 
-		hsv_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
+		hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 		with _hsv_lock:
 			_shared_hsv = hsv_frame
 
@@ -233,6 +233,10 @@ def _vision_loop():
 	
 		final_output = cv2.vconcat([display_frame, masks_combined])
 	
+		if _record_mp4 and _video_out is None and _video_path is not None:
+			fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+			output_h, output_w = final_output.shape[:2]
+			_video_out = cv2.VideoWriter(_video_path, fourcc, 30.0, (output_w, output_h))
 		if _video_out is not None:
 			_video_out.write(final_output)
 	
@@ -242,15 +246,17 @@ def _vision_loop():
 
 # The main function to start the vision and scanning process
 def start_vision_system(camera_instance, record_mp4=True):
-	global _camera, _video_out
+	global _camera, _video_out, _record_mp4, _video_path
 	_camera = camera_instance
+	_record_mp4 = record_mp4
+	_video_out = None
     
 	if record_mp4:
-		fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 		timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-		_video_out = cv2.VideoWriter(f"vid_{timestamp}.mp4", fourcc, 30.0, (640, 450))
+		_video_path = f"vid_{timestamp}.mp4"
 		print(f"Recording: Activated")
 	else:
+		_video_path = None
 		_video_out = None
 		print("Recording: Not activated")
 
@@ -299,10 +305,12 @@ def _cleanup_hardware():
 
 # Safely output the video to mp4
 def stop_vision_system():
-	global _video_out
+	global _video_out, _record_mp4, _video_path
 	if _video_out is not None:
 		_video_out.release()
 		_video_out = None
+	_record_mp4 = False
+	_video_path = None
 	print("Video saved")
 
 atexit.register(_cleanup_hardware)
