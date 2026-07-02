@@ -21,6 +21,7 @@ parkinglot_data = {"center_x": 0, "center_y": 0, "width": 0, "height": 0}
 track_data = {"polygon": None, "center_x": 0, "center_y": 0}
 
 _display_masks = {"red": None, "green": None, "magenta": None, "white": None}
+_marker_points = {}
 
 _data_lock = threading.Lock()
 
@@ -166,6 +167,25 @@ def _process_track(hsv, red_mask, green_mask):
 
 	return track, track_mask
 
+def set_marker_point(name, x, y, color=(0, 255, 255), radius=5, thickness=-1, label=None):
+	with _data_lock:
+		_marker_points[name] = {
+			"x": int(x),
+			"y": int(y),
+			"color": tuple(int(channel) for channel in color),
+			"radius": int(radius),
+			"thickness": int(thickness),
+			"label": label if label is not None else str(name),
+		}
+
+def remove_marker_point(name):
+	with _data_lock:
+		_marker_points.pop(name, None)
+
+def clear_marker_points():
+	with _data_lock:
+		_marker_points.clear()
+
 # Thread function for scanning the track
 def _vision_loop():
 	global _camera, _video_out, _shared_hsv, _output_frame, _record_mp4, _video_path
@@ -203,6 +223,7 @@ def _vision_loop():
 			obs = nearest_obstacle.copy()
 			mag = parkinglot_data.copy()
 			trk = track_data.copy()
+			markers = list(_marker_points.values())
 	
 		if obs["color"]:
 			x, y, w, h = obs["center_x"], obs["center_y"], obs["width"], obs["height"]
@@ -221,6 +242,12 @@ def _vision_loop():
 			cv2.drawContours(display_frame, [trk["polygon"]], 0, (255, 255, 255), 3)
 			cv2.circle(display_frame, (trk["center_x"], trk["center_y"]), 5, (0, 0, 255), -1)
 			cv2.putText(display_frame, f"TRACK X: {trk['center_x']}", (trk["center_x"]-40, trk["center_y"]-15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+		for marker in markers:
+			point = (marker["x"], marker["y"])
+			cv2.circle(display_frame, point, marker["radius"], marker["color"], marker["thickness"])
+			if marker["label"]:
+				cv2.putText(display_frame, marker["label"], (point[0] + 8, point[1] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, marker["color"], 1)
 	
 		frame_h, frame_w = display_frame.shape[:2]
 		preview_w = max(1, frame_w // 4)

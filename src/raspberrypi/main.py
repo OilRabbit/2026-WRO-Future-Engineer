@@ -3,7 +3,7 @@ import time
 import datetime
 import math
 from esp_com.communication import ESP32Communicator
-from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance
+from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance, set_marker_point
 from picamera2 import Picamera2 as picam2
 from enum import Enum
 
@@ -89,6 +89,9 @@ def send_command_logged(cmd_str):
 def stop_vehicle(reason):
         print(f"[STOP] {reason}")
         send_command_logged("0, 0, 0, motor stop")
+
+def add_marker_point(name, x, y, color=(0, 255, 255), radius=5, label=None):
+        set_marker_point(name, x, y, color=color, radius=radius, label=label)
 
 def calculate_oc2_steering_bias(track_data, obstacle_data, current_angle):
         if not hasattr(calculate_oc2_steering_bias, "was_dodging"):
