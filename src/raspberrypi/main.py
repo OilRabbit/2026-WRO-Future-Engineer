@@ -48,14 +48,6 @@ start_time = 0
 end_time = 0
 recorded_time = 0
 
-#Checkpoints (default as clockwise case)
-left_turning_point = [0, 180] #check direction
-right_turning_point = [640, 180] #check direction
-turning_point = right_turning_point #check if the robot get to the position that should turn
-track_left = [600, 360] #check if the robot is getting left from the ideal track
-track_right = [640, 360] #check if the robot is getting right from the ideal track
-ending_point = [320, 100] #check if the robot is at the ideal point to end
-
 #States
 class States(Enum):
 	INIT = 0
@@ -157,6 +149,16 @@ def calculate_oc2_steering_bias(track_data, obstacle_data, current_angle):
 
 state = States.INIT
 last_state = None
+
+#Checkpoints (default as clockwise case)
+left_turning_point = [0, 70] #check direction
+add_marker_point("Left TP", left_turning_point[0], left_turning_point[1], color=(0, 0, 255), radius=6, label="Left TP")
+right_turning_point = [400, 70] #check direction
+add_marker_point("Right TP", right_turning_point[0], right_turning_point[1], color=(0, 0, 255), radius=6, label="Right TP")
+turning_point = right_turning_point #check if the robot get to the position that should turn
+track_left = [375, 225] #check if the robot is getting left from the ideal track
+track_right = [400, 225] #check if the robot is getting right from the ideal track
+ending_point = [200, 62.5] #check if the robot is at the ideal point to end
 
 try:
         print("IDLE")
