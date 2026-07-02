@@ -222,10 +222,13 @@ def _vision_loop():
 			cv2.circle(display_frame, (trk["center_x"], trk["center_y"]), 5, (0, 0, 255), -1)
 			cv2.putText(display_frame, f"TRACK X: {trk['center_x']}", (trk["center_x"]-40, trk["center_y"]-15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 	
-		s_red = cv2.resize(cv2.cvtColor(m_red, cv2.COLOR_GRAY2BGR), (160, 90))
-		s_grn = cv2.resize(cv2.cvtColor(m_green, cv2.COLOR_GRAY2BGR), (160, 90))
-		s_mag = cv2.resize(cv2.cvtColor(m_mag, cv2.COLOR_GRAY2BGR), (160, 90))
-		s_wht = cv2.resize(cv2.cvtColor(m_white, cv2.COLOR_GRAY2BGR), (160, 90))
+		frame_h, frame_w = display_frame.shape[:2]
+		preview_w = max(1, frame_w // 4)
+		preview_h = max(1, frame_h // 4)
+		s_red = cv2.resize(cv2.cvtColor(m_red, cv2.COLOR_GRAY2BGR), (preview_w, preview_h))
+		s_grn = cv2.resize(cv2.cvtColor(m_green, cv2.COLOR_GRAY2BGR), (preview_w, preview_h))
+		s_mag = cv2.resize(cv2.cvtColor(m_mag, cv2.COLOR_GRAY2BGR), (preview_w, preview_h))
+		s_wht = cv2.resize(cv2.cvtColor(m_white, cv2.COLOR_GRAY2BGR), (preview_w, preview_h))
 		masks_combined = cv2.hconcat([s_red, s_grn, s_mag, s_wht])
 	
 		final_output = cv2.vconcat([display_frame, masks_combined])
