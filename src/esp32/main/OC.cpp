@@ -77,7 +77,11 @@ void OCmain(void *){
     if (is_btn_bumped(TFT_BTN1) && !run_OC2){
       run_OC1 = !run_OC1;
       if (run_OC1) send_msg("ROC1");
-      else send_msg("EOC1");
+      else{
+      	      send_msg("EOC1");
+      	      motor_stop(BRAKE);
+      	      steering_percentage = 0;
+      }
     } else if (is_btn_bumped(TFT_BTN2) && !run_OC1){
       run_OC2 = !run_OC2;
       if (run_OC2) send_msg("ROC2");
