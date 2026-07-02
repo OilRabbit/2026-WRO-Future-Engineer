@@ -200,7 +200,6 @@ try:
                         send_command_logged("OC1")
                         start_time = time.perf_counter()
                         while run_OC1:
-                                current_frame_time = time.perf_counter()
                                 reply = esp_replyNprint()
                                 if reply == "EOC1":
                                         print(f"\n[{state.name}][FSM ALERT] EOC1 Signal Received from ESP32. Terminating run immediately.")
@@ -208,196 +207,64 @@ try:
                                         run_OC1 = False
                                         break
 
-                                if state != last_state:
-                                        print(f"\n==================================================")
-                                        print(f"[{state.name}][FSM CHANGE] State Transition: {last_state} ===> {state}")
-                                        print(f"==================================================\n")
-                                        last_state = state
+                                _, _, track = get_latest_data()
 
-                                obstacle, parking, track = get_latest_data()
-
-                                # --------------------------------------------------------------
-                                # DYNAMIC LOCKOUT LOGIC: PURPLE WALL RANGE BOUNDARY WINDOW
-                                # --------------------------------------------------------------
-                                purple_area_check = (parking["width"] * parking["height"]) // 100
-
-                                # Condition A: Purple wall is scanned on screen
-                                if parking["center_x"] != 0 and purple_area_check >= MIN_PURPLE_AREA:
-                                        if not purple_wall_lockout_active:
-                                                print(f"[{state.name}][LOCKOUT ENGAGED] Purple wall entered frame. Pillar detection completely stopped.")
-                                                purple_wall_lockout_active = True
-
-                                # Condition B: Purple wall has completely gone out of the screen
-                                elif parking["center_x"] == 0:
-                                        if purple_wall_lockout_active:
-                                                print(f"[{state.name}][LOCKOUT RELEASED] Purple wall went completely off screen. Restoring pillar detection.")
-                                                purple_wall_lockout_active = False
-
-                                # If the lockout state is active, suppress all pillar calculations
-                                if purple_wall_lockout_active:
-                                        obstacle["color"] = None
-                                # --------------------------------------------------------------
-
-                                # --------------------------------------------------------------
-                                # FIRST SECTOR
-                                # --------------------------------------------------------------
                                 if state == States.FIRST_SECTOR:
-                                        angle = calculate_oc2_steering_bias(track, obstacle, angle)
-                                        print(f"[{state.name}][STEERING_DECISION] First Sector Output -> Speed: 8 | Combined Angle: {angle:.2f}")
-                                        send_command_logged(f"8, {angle}, -1, move forward")
-                                        time.sleep(0.025)
-
-                                        indi1_inside = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
-                                        indi2_inside = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
-
-                                        if indi1_inside == False and indi2_inside == True and track["center_x"] != 0:
-                                                print(f"[{state.name}][FSM_STAGE_1] Corner confirmation pass 1 triggered. Double-checking sensor alignment...")
-                                                time.sleep(0.033)
-
-                                                indi1_retry = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
-                                                indi2_retry = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
-
-                                                if indi1_retry == False and indi2_retry == True and track["center_x"] != 0:
-                                                        if track["center_x"] < 320:
-                                                                is_clockwise = False
-                                                        print(f"[{state.name}][FSM_SUCCESS] Corner verified! Direction: {'CLOCKWISE' if is_clockwise else 'COUNTER-CLOCKWISE'}")
-                                                        state = States.TURNING_STATE
-                                                        num_of_turn += 1
-                                                else:
-                                                        print(f"[{state.name}][FSM_STAGE_1_FAILED] False corner read on pass 2. Resuming straight line run.")
-
-                                # --------------------------------------------------------------
-                                # WAIT TURN STATE
-                                # --------------------------------------------------------------
-                                elif state == States.WAIT_TURN_STATE:
-                                        print(f"[{state.name}][WAIT_ALIGN] Executing delayed forward roll. Evaluating Turn Point Coordinate: {turning_point}")
-                                        send_command_logged("8, 0, -1, wait turn")
-
-                                        at_turning_node = get_track_distance(turning_point[0], turning_point[1])[0]
-                                        print(f"[{state.name}][WAIT_ALIGN] Coordinate Target Status: {at_turning_node}")
-
-                                        if at_turning_node == True:
-                                                print(f"[{state.name}][WAIT_ALIGN] Target coordinate hit. Initializing Turn Sequence #{num_of_turn + 1}")
-                                                state = States.TURNING_STATE
-                                                num_of_turn += 1
-                                                time.sleep(0.25)
-
-                                # --------------------------------------------------------------
-                                # TURNING STATE
-                                # --------------------------------------------------------------
-                                elif state == States.TURNING_STATE:
-                                        base_turn_angle = (track["center_x"] - 320) / 0.4
-                                        base_turn_angle = max(-100, min(100, base_turn_angle))
-                                        angle = calculate_oc2_steering_bias(track, obstacle, base_turn_angle)
-
-                                        print(f"[{state.name}][TURNING_ARC] Center Line Delta: {track['center_x'] - 320} | Final Arc Target Angle: {angle:.2f}")
-                                        send_command_logged(f"8, {angle}, -1, turn")
-
-                                        exit_landmark_detected = get_track_distance(sector_indi[0], sector_indi[1])[0]
-                                        print(f"[{state.name}][TURNING_EXIT_CHECK] Sector Indicator Status: {exit_landmark_detected} | Elapsed Turn Time: {turn_time:.3f}s")
-
-                                        if exit_landmark_detected == True:
-                                                if turn_time <= 0.3:
-                                                        print(f"[{state.name}][TURNING_REJECT] Corner landmark triggered too early ({turn_time:.3f}s). Overriding old FSM turn count revert.")
-                                                        state = States.RUN_SECTOR_STATE
-                                                        turn_time = 0
-                                                        angle = 0
-                                                        continue
-
-                                                print(f"[{state.name}][TURNING_EXIT_CONFIRMED] Apex cleared at {turn_time:.3f}s. Initializing steering dampening routine.")
-                                                buffer = angle / 5
-                                                for i in range(4):
-                                                        angle -= buffer
-                                                        print(f"[{state.name}][TURNING_DAMPEN] Dampening Cycle Step {i+1}/4 -> Reduced Steering: {angle:.2f}")
-                                                        send_command_logged(f"10, {angle}, -1, turn")
-                                                        time.sleep(0.02)
-
-                                                if lap_count_oc1 >= 3:
-                                                        print(f"[{state.name}][FSM_COMPLETION] Objective loops cleared via Magenta Wall registry! Shifting to Stop Routine.")
-                                                        state = States.LAST_RUN
-                                                else:
-                                                        state = States.RUN_SECTOR_STATE
-                                                turn_time = 0
-                                        else:
-                                                time.sleep(0.025)
-                                                turn_time += 0.025
-
-                                # --------------------------------------------------------------
-                                # DASH AFTER TURNING STATE
-                                # --------------------------------------------------------------
-                                elif state == States.DASH_AFTER_TURNING_STATE:
-                                        print(f"[{state.name}][DASH_RUN] Clearing intersection threshold. Straight run locking for 250ms.")
-                                        send_command_logged("8, 0, -1, go forward")
-                                        time.sleep(0.25)
-                                        if lap_count_oc1 >= 3:
-                                                state = States.LAST_RUN
-                                        else:
-                                                state = States.RUN_SECTOR_STATE
-
-                                # --------------------------------------------------------------
-                                # RUN SECTOR STATE
-                                # --------------------------------------------------------------
-                                elif state == States.RUN_SECTOR_STATE:
-                                        angle = calculate_oc2_steering_bias(track, obstacle, angle)
-                                        print(f"[{state.name}][STEERING_DECISION] Cruise Sector Output -> Speed: 12 | Combined Angle: {angle:.2f}")
-                                        send_command_logged(f"12, {angle}, -1, move forward")
-                                        time.sleep(0.025)
-
-                                        # ---- MAGENTA CHROMATIC OVERLAY LAP COUNTER ----
-                                        purple_x = parking["center_x"]
-                                        purple_area = (parking["width"] * parking["height"]) // 100
-
-                                        if purple_x != 0 and purple_area >= MIN_PURPLE_AREA:
-                                                time_since_last_lap = current_frame_time - last_purple_lap_time
-
-                                                if time_since_last_lap >= PURPLE_LAP_BUFFER:
-                                                        lap_count_oc1 += 1
-                                                        last_purple_lap_time = current_frame_time  # Set time-lock anchor
-
-                                                        print(f"\n🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮")
-                                                        print(f"[{state.name}][LAP REGISTERED] Magenta wall verified! Loop Count: [ {lap_count_oc1} / 3 ]")
-                                                        print(f"[{state.name}][TIME LOCK] Guard frame window active for {PURPLE_LAP_BUFFER} seconds.")
-                                                        print(f"🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮🔮\n")
-
-                                                        if lap_count_oc1 >= 3:
-                                                                print(f"[{state.name}][OC1 METRIC PASSED] Target loop requirement achieved. Swapping to stop sequence.")
-                                                                state = States.LAST_RUN
-                                                                continue
-                                                else:
-                                                        remaining_lockout = PURPLE_LAP_BUFFER - time_since_last_lap
-                                                        print(f"[{state.name}][LAP BLOCK] Magenta marker active, but locked in debounce window. Shield: {remaining_lockout:.2f}s.")
-                                        # --------------------------------------------------------
-
-                                        # Keep scanning corner boundaries for tracking stability
-                                        sector_indi1 = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
-                                        sector_indi2 = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
-
-                                        if sector_indi1 == False and sector_indi2 == True:
-                                                print(f"[{state.name}][CRUISE_FSM] Upcoming corner landmark detected. Validating entry frame...")
-                                                time.sleep(0.033)
-                                                sector_indi1_retry = get_track_distance(turn_indi_1[0], turn_indi_1[1])[0]
-                                                sector_indi2_retry = get_track_distance(turn_indi_2[0], turn_indi_2[1])[0]
-
-                                                if sector_indi1_retry == False and sector_indi2_retry == True:
-                                                        print(f"[{state.name}][CRUISE_FSM_SUCCESS] Corner entry verified. Control transferred to TURNING_STATE.")
-                                                        state = States.TURNING_STATE
-
-                                # --------------------------------------------------------------
-                                # LAST RUN
-                                # --------------------------------------------------------------
-                                elif state == States.LAST_RUN:
-                                        print(f"[{state.name}][FINAL_LANE] Target loops complete. Decelerating and centering vehicle for stop line...")
-                                        time.sleep(0.5)
-                                        print(f"[{state.name}][FINAL_STOP] Execution finished. Sending absolute zero brake code down serial line.")
-                                        send_command_logged("0, 0, 0, motor stop")
-                                        run_OC1 = False
-                                        break
-
-                                time.sleep(0.005)
-
-                # ======================================================================
-                # RUN OC2 BLOCK (Bypassed)
-                # ======================================================================
+					esp.send_command("10, 0, -1, go forward")
+					while get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
+						time.sleep(0.005)
+					if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True:
+						is_clockwise = False
+						turning_point = left_turning_point
+						track_left = [0, 360]
+						track_right = [40, 360]
+						state = WAIT_TURN_STATE
+					continue
+								
+				#Wait turn
+				elif state == WAIT_TURN_STATE:
+					esp.send_command("10, 0, 100, wait turn")
+					state = TURNING_STATE
+					continue
+				
+				#Turn 
+				elif state == TURNING_STATE:
+					num_of_turn += 1
+					esp.send_command("10, 70, 200, turn")
+					state = DASH_AFTER_TURNING_STATE
+					continue
+				
+				#Dash to pass the corner
+				elif state == DASH_AFTER_TURING_STATE:
+					esp.send_command("10, 0, 100, go forward")
+					if num_of_turn == 12:
+						state = LAST_RUN
+					else:
+						state = RUN_SECTOR_STATE
+					continue
+				
+				#Run sector and keep a certain distance from the inner barrier
+				elif state == RUN_SECTOR_STATE:
+					if (get_track_distance(track_right[0], track_right[1])[0] == True and is_clockwise) or (get_track_distance(track_left[0], track_left[1])[0] == True and not is_clockwise):
+						esp.send_command("10, 10, -1, move right")
+					elif (get_track_distance(track_left[0], track_left[1])[0] == False and is_clockwise) or (get_track_distance(track_right[0], track_right[1])[0] == False and not is_clockwise):
+						esp.send_command("10, 10, -1, move left")
+					if get_track_distance(turning_point[0], turning_point[1])[0] == True:
+						state = WAIT_TURN_STATE
+					continue
+	
+				#Last forward to stop
+				elif state == LAST_RUN:
+					esp.send_command("10, 0, -1, move forward")
+					#Wait until the ending_point reach the wall in front of the robot
+					while get_track_distance(ending_point[0], ending_point[1])[0] == True:
+						time.sleep(0.005)
+					esp.send_command("0, 0, 0, motor stop")
+					end_time = time.pref_counter()
+					break
+	
+				# End of OC1 FSM #
+				time.sleep(0.005)
                 elif run_OC2:
                         send_command_logged("OC2")
                         while run_OC2:
