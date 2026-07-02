@@ -26,7 +26,7 @@ camera.configure(config)
 camera.start()
 print("Camera: Activated")
 
-start_vision_system(camera, False)
+start_vision_system(camera, True)
 
 live_streaming = True
 if live_streaming:
@@ -37,49 +37,34 @@ else:
 
 print("======= End of Init =======")
 
-# Global tracking variables
+# Global variables
 run_OC1 = False
 run_OC2 = False
 reset_OC = True
 num_of_turn = 0
-lap_count_oc1 = 0  # Track completed loops via purple wall signatures
 is_clockwise = True
+state = 0
 start_time = 0
 end_time = 0
 recorded_time = 0
 
-# Checkpoints & Indicators
-angle = 0
-turn_indi_1 = [320, 30]
-turn_indi_2 = [320, 60]
-sector_indi = [320, 50]
-turn_time = 0
+#Checkpoints (default as clockwise case)
+left_turning_point = [0, 180] #check direction
+right_turning_point = [640, 180] #check direction
+turning_point = right_turning_point #check if the robot get to the position that should turn
+track_left = [600, 360] #check if the robot is getting left from the ideal track
+track_right = [640, 360] #check if the robot is getting right from the ideal track
+ending_point = [320, 100] #check if the robot is at the ideal point to end
 
-# Purple Wall Detector Config & Anti-Double-Count Time Locks
-last_purple_lap_time = 0.0
-PURPLE_LAP_BUFFER = 3.0
-MIN_PURPLE_AREA = 25                # Minimum contour area scaled size to confirm it's the wall
-
-# Persistent lockout flag for tracking when purple wall is actively on screen
-purple_wall_lockout_active = False
-
-front_turning_point = [320, 70]
-left_turning_point = [40, 200]
-right_turning_point = [600, 200]
-turning_point = right_turning_point
-track_left = [[80, 180], [520, 180]]
-track_right = [[120, 180], [560, 180]]
-ending_point = [320, 30]
-
-# States
+#States
 class States(Enum):
-        INIT = 0
-        FIRST_SECTOR = 1
-        WAIT_TURN_STATE = 2
-        TURNING_STATE = 3
-        DASH_AFTER_TURNING_STATE = 4
-        RUN_SECTOR_STATE = 5
-        LAST_RUN = 6
+	INIT = 0
+	FIRST_SECTOR = 1 #Move forward until it knows the direction to run
+	WAIT_TURN_STATE = 2 #Move forward for fixed distance to get to the ideal point to turn
+	TURNING_STATE = 3 #Turn until it is parallel to the next path
+	DASH_AFTER_TURNING_STATE = 4 #Move forward until it passed the corner sector
+	RUN_SECTOR_STATE = 5 #Move forward until is time to turn
+	LAST_RUN = 6 #Move forward to stop at the right place
 
 def esp_replyNprint():
         try:
@@ -217,43 +202,43 @@ try:
                                                 turning_point = left_turning_point
                                                 track_left = [0, 360]
                                                 track_right = [40, 360]
-                                                state = WAIT_TURN_STATE
+                                                state = States.WAIT_TURN_STATE
                                         continue
 
                                 # Wait turn
-                                elif state == WAIT_TURN_STATE:
+                                elif state == States.WAIT_TURN_STATE:
                                         esp.send_command("10, 0, 100, wait turn")
-                                        state = TURNING_STATE
+                                        state = States.TURNING_STATE
                                         continue
 
                                 # Turn
-                                elif state == TURNING_STATE:
+                                elif state == States.TURNING_STATE:
                                         num_of_turn += 1
                                         esp.send_command("10, 70, 200, turn")
-                                        state = DASH_AFTER_TURNING_STATE
+                                        state = States.DASH_AFTER_TURNING_STATE
                                         continue
 
                                 # Dash to pass the corner
-                                elif state == DASH_AFTER_TURING_STATE:
+                                elif state == States.DASH_AFTER_TURNING_STATE:
                                         esp.send_command("10, 0, 100, go forward")
                                         if num_of_turn == 12:
-                                                state = LAST_RUN
+                                                state = States.LAST_RUN
                                         else:
-                                                state = RUN_SECTOR_STATE
+                                                state = States.RUN_SECTOR_STATE
                                         continue
 
                                 # Run sector and keep a certain distance from the inner barrier
-                                elif state == RUN_SECTOR_STATE:
+                                elif state == States.RUN_SECTOR_STATE:
                                         if (get_track_distance(track_right[0], track_right[1])[0] == True and is_clockwise) or (get_track_distance(track_left[0], track_left[1])[0] == True and not is_clockwise):
                                                 esp.send_command("10, 10, -1, move right")
                                         elif (get_track_distance(track_left[0], track_left[1])[0] == False and is_clockwise) or (get_track_distance(track_right[0], track_right[1])[0] == False and not is_clockwise):
                                                 esp.send_command("10, 10, -1, move left")
                                         if get_track_distance(turning_point[0], turning_point[1])[0] == True:
-                                                state = WAIT_TURN_STATE
+                                                state = States.WAIT_TURN_STATE
                                         continue
 
                                 # Last forward to stop
-                                elif state == LAST_RUN:
+                                elif state == States.LAST_RUN:
                                         esp.send_command("10, 0, -1, move forward")
                                         # Wait until the ending_point reach the wall in front of the robot
                                         while get_track_distance(ending_point[0], ending_point[1])[0] == True:
