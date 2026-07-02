@@ -366,7 +366,7 @@ if __name__ == "__main__":
 	target_frame_duration_us = 10000
 	
 	config = camera.create_video_configuration(
-		main={"size": video_size, "format": "RGB888"},
+		main={"size": video_size, "format": "BGR888"},
 		sensor={"output_size": sensor_video_size},
 		controls={"FrameDurationLimits": (target_frame_duration_us, target_frame_duration_us)},
 		buffer_count=4,
