@@ -12,9 +12,9 @@ print("======= Init =======")
 esp = ESP32Communicator()
 esp.connect()
 camera = picam2()
-video_size = (640, 360)
+video_size = (400, 225)
 sensor_video_size = (2304, 1296)
-target_frame_duration_us = 33333
+target_frame_duration_us = 10000
 config = camera.create_video_configuration(
         main={"size": video_size, "format": "BGR888"},
         sensor={"output_size": sensor_video_size},
@@ -26,7 +26,7 @@ camera.configure(config)
 camera.start()
 print("Camera: Activated")
 
-start_vision_system(camera, True)
+start_vision_system(camera, False)
 
 live_streaming = True
 if live_streaming:
@@ -200,16 +200,15 @@ try:
                         send_command_logged("OC1")
                         start_time = time.perf_counter()
                         while run_OC1:
-                                reply = esp_replyNprint()
-                                if reply == "EOC1":
-                                        print(f"\n[{state.name}][FSM ALERT] EOC1 Signal Received from ESP32. Terminating run immediately.")
-                                        stop_vehicle("OC1 stop requested by ESP32")
-                                        run_OC1 = False
-                                        break
+                        	reply = esp_replyNprint()
+                        	if reply == "EOC1":
+                        		print(f"\n[{state.name}][FSM ALERT] EOC1 Signal Received from ESP32. Terminating run immediately.")
+                        		stop_vehicle("OC1 stop requested by ESP32")
+                        		run_OC1 = False
+                        		break
+                        	_, _, track = get_latest_data()
 
-                                _, _, track = get_latest_data()
-
-                                if state == States.FIRST_SECTOR:
+                        	if state == States.FIRST_SECTOR:
 					esp.send_command("10, 0, -1, go forward")
 					while get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False:
 						time.sleep(0.005)
