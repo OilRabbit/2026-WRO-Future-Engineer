@@ -323,9 +323,17 @@ if __name__ == "__main__":
 	print("=======Initializing=======")
 	camera = picam2()
 	
-	full_sensor_res = camera.sensor_resolution
+	video_size = (640, 360)
+	sensor_video_size = (2304, 1296)
+	target_frame_duration_us = 33333
 	
-	config = camera.create_video_configuration(main={"size": (640, 360), "format": "BGR888"}, sensor={"output_size": full_sensor_res})
+	config = camera.create_video_configuration(
+		main={"size": video_size, "format": "BGR888"},
+		sensor={"output_size": sensor_video_size},
+		controls={"FrameDurationLimits": (target_frame_duration_us, target_frame_duration_us)},
+		buffer_count=4,
+		queue=False,
+	)
 	
 	camera.configure(config)
 	camera.start()
