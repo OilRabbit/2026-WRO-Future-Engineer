@@ -151,11 +151,17 @@ state = States.INIT
 last_state = None
 
 #Checkpoints (default as clockwise case)
-front_point = [200, 65]
-left_turning_point = [0, 70] #check direction
+front_point = [200, 80]
+add_marker_point("Front TP", front_point[0], front_point[1], color=(0, 0, 255), radius=6, label="Front P")
+left_turning_point = [5, 200] #check direction
 add_marker_point("Left TP", left_turning_point[0], left_turning_point[1], color=(0, 0, 255), radius=6, label="Left TP")
-right_turning_point = [400, 70] #check direction
+right_turning_point = [395, 200] #check direction
 add_marker_point("Right TP", right_turning_point[0], right_turning_point[1], color=(0, 0, 255), radius=6, label="Right TP")
+clockwise_indicator = [395, 135]
+add_marker_point("Clockwise Indicator", clockwise_indicator[0], clockwise_indicator[1], color=(0, 0, 255), radius=6, label="C Indi")
+anticlockwise_indicator = [5, 135]
+add_marker_point("Anticlockwise Indicator", anticlockwise_indicator[0], anticlockwise_indicator[1], color=(0, 0, 255), radius=6, label="AntiC Indi")
+
 turning_point = right_turning_point #check if the robot get to the position that should turn
 track_left = [375, 225] #check if the robot is getting left from the ideal track
 track_right = [400, 225] #check if the robot is getting right from the ideal track
@@ -201,19 +207,29 @@ try:
 
                                 if state == States.FIRST_SECTOR:
                                         esp.send_command("10, 0, -1, go forward")
-                                        if not(not get_track_distance(front_point[0], front_point[1])[0] and (get_track_distance(left_turning_point[0], left_turning_point[1])[0] or get_track_distance(right_turning_point[0], right_turning_point[1])[0])) == True:
+                                        if get_track_distance(front_point[0], front_point[1])[0] == True or (get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False):
                                                 time.sleep(0.005)
                                                 continue
-                                        if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True:
+                                        else:
                                         	print("Detected")
-                                        	is_clockwise = False
-                                        	turning_point = left_turning_point
-                                        	track_left = [0, 225]
-                                        	track_right = [25, 225]
                                         	state = States.INIT
+                                        	esp.send_command("0, 0, -1, stop")
+                                        	if (get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0] == True):
+                                        		print("Clockwise")
+                                        	else:
+                                        		print("Anticlockwise")
                                         	break
-                                        	# state = States.WAIT_TURN_STATE
-                                        	# continue
+                                        # if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True:
+                                        # 	print("Detected")
+                                        # 	is_clockwise = False
+                                        # 	turning_point = left_turning_point
+                                        # 	track_left = [0, 225]
+                                        # 	track_right = [25, 225]
+                                        # 	state = States.INIT
+                                        # 	esp.send_command("0, 0, -1, stop")
+                                        # 	break
+                                        # 	# state = States.WAIT_TURN_STATE
+                                        # 	# continue
 
                                 # Wait turn
                                 elif state == States.WAIT_TURN_STATE:
