@@ -15,6 +15,8 @@ _output_frame = None
 _frame_lock = threading.Lock()
 _shared_hsv = None
 _hsv_lock = threading.Lock()
+_stream_clients = 0
+_stream_lock = threading.Lock()
 
 nearest_obstacle = {"color": None, "center_x": 0, "center_y": 0, "width": 0, "height": 0}
 parkinglot_data = {"center_x": 0, "center_y": 0, "width": 0, "height": 0}
@@ -23,6 +25,13 @@ track_data = {"polygon": None, "center_x": 0, "center_y": 0}
 _display_masks = {"red": None, "green": None, "magenta": None, "white": None}
 _marker_points = {}
 _detection_flags = {"red": True, "green": True, "magenta": True}
+_vision_config = {
+	"draw_overlays": True,
+	"show_debug_strip": False,
+	"stream_use_debug_frame": False,
+	"record_use_debug_frame": False,
+	"stream_jpeg_quality": 70,
+}
 
 _data_lock = threading.Lock()
 
@@ -225,6 +234,26 @@ def set_all_color_detection(red=None, green=None, magenta=None):
 			if enabled is not None:
 				_detection_flags[color_name] = bool(enabled)
 
+def configure_vision_pipeline(
+	draw_overlays=None,
+	show_debug_strip=None,
+	stream_use_debug_frame=None,
+	record_use_debug_frame=None,
+	stream_jpeg_quality=None,
+):
+	with _data_lock:
+		updates = {
+			"draw_overlays": draw_overlays,
+			"show_debug_strip": show_debug_strip,
+			"stream_use_debug_frame": stream_use_debug_frame,
+			"record_use_debug_frame": record_use_debug_frame,
+		}
+		for key, value in updates.items():
+			if value is not None:
+				_vision_config[key] = bool(value)
+		if stream_jpeg_quality is not None:
+			_vision_config["stream_jpeg_quality"] = max(30, min(95, int(stream_jpeg_quality)))
+
 # Thread function for scanning the track
 def _vision_loop():
 	global _camera, _video_out, _shared_hsv, _output_frame, _record_mp4, _video_path
@@ -257,58 +286,78 @@ def _vision_loop():
 			_display_masks["green"] = m_green
 			_display_masks["magenta"] = m_mag
 			_display_masks["white"] = m_white
-	
+
+		with _stream_lock:
+			has_stream_clients = _stream_clients > 0
+
 		with _data_lock:
+			config = _vision_config.copy()
 			obs = nearest_obstacle.copy()
 			mag = parkinglot_data.copy()
 			trk = track_data.copy()
 			markers = list(_marker_points.values())
-	
-		if obs["color"]:
-			x, y, w, h = obs["center_x"], obs["center_y"], obs["width"], obs["height"]
-			tl_x, tl_y = int(x - w/2), int(y - h/2)
-			c = (0, 0, 255) if obs["color"] == "RED" else (0, 255, 0)
-			cv2.rectangle(display_frame, (tl_x, tl_y), (tl_x+w, tl_y+h), c, 2)
-			cv2.putText(display_frame, f"{obs['color']} ({x}, {y}), A: {w * h // 100}", (tl_x, tl_y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c, 2)
-	
-		if mag["center_x"] != 0:
-			x, y, w, h = mag["center_x"], mag["center_y"], mag["width"], mag["height"]
-			tl_x, tl_y = int(x - w/2), int(y - h/2)
-			cv2.rectangle(display_frame, (tl_x, tl_y), (tl_x+w, tl_y+h), (255, 0, 255), 2)
-			cv2.putText(display_frame, f"Mag ({x}, {y})", (tl_x, tl_y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
-	
-		if trk["polygon"] is not None:
-			cv2.drawContours(display_frame, [trk["polygon"]], 0, (255, 255, 255), 3)
-			cv2.circle(display_frame, (trk["center_x"], trk["center_y"]), 5, (0, 0, 255), -1)
-			cv2.putText(display_frame, f"TRACK X: {trk['center_x']}", (trk["center_x"]-40, trk["center_y"]-15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
 
-		for marker in markers:
-			point = (marker["x"], marker["y"])
-			cv2.circle(display_frame, point, marker["radius"], marker["color"], marker["thickness"])
-			if marker["label"]:
-				cv2.putText(display_frame, marker["label"], (point[0] + 8, point[1] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, marker["color"], 1)
-	
-		frame_h, frame_w = display_frame.shape[:2]
-		preview_w = max(1, frame_w // 4)
-		preview_h = max(1, frame_h // 4)
-		s_red = cv2.resize(cv2.cvtColor(m_red, cv2.COLOR_GRAY2BGR), (preview_w, preview_h))
-		s_grn = cv2.resize(cv2.cvtColor(m_green, cv2.COLOR_GRAY2BGR), (preview_w, preview_h))
-		s_mag = cv2.resize(cv2.cvtColor(m_mag, cv2.COLOR_GRAY2BGR), (preview_w, preview_h))
-		s_wht = cv2.resize(cv2.cvtColor(m_white, cv2.COLOR_GRAY2BGR), (preview_w, preview_h))
-		masks_combined = cv2.hconcat([s_red, s_grn, s_mag, s_wht])
-	
-		final_output = cv2.vconcat([display_frame, masks_combined])
-	
+		needs_display = (
+			config["draw_overlays"]
+			or config["show_debug_strip"]
+			or _record_mp4
+			or has_stream_clients
+		)
+		if not needs_display:
+			continue
+
+		if config["draw_overlays"]:
+			if obs["color"]:
+				x, y, w, h = obs["center_x"], obs["center_y"], obs["width"], obs["height"]
+				tl_x, tl_y = int(x - w/2), int(y - h/2)
+				c = (0, 0, 255) if obs["color"] == "RED" else (0, 255, 0)
+				cv2.rectangle(display_frame, (tl_x, tl_y), (tl_x+w, tl_y+h), c, 2)
+				cv2.putText(display_frame, f"{obs['color']} ({x}, {y}), A: {w * h // 100}", (tl_x, tl_y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c, 2)
+
+			if mag["center_x"] != 0:
+				x, y, w, h = mag["center_x"], mag["center_y"], mag["width"], mag["height"]
+				tl_x, tl_y = int(x - w/2), int(y - h/2)
+				cv2.rectangle(display_frame, (tl_x, tl_y), (tl_x+w, tl_y+h), (255, 0, 255), 2)
+				cv2.putText(display_frame, f"Mag ({x}, {y})", (tl_x, tl_y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
+
+			if trk["polygon"] is not None:
+				cv2.drawContours(display_frame, [trk["polygon"]], 0, (255, 255, 255), 3)
+				cv2.circle(display_frame, (trk["center_x"], trk["center_y"]), 5, (0, 0, 255), -1)
+				cv2.putText(display_frame, f"TRACK X: {trk['center_x']}", (trk["center_x"]-40, trk["center_y"]-15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+
+			for marker in markers:
+				point = (marker["x"], marker["y"])
+				cv2.circle(display_frame, point, marker["radius"], marker["color"], marker["thickness"])
+				if marker["label"]:
+					cv2.putText(display_frame, marker["label"], (point[0] + 8, point[1] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, marker["color"], 1)
+
+		debug_output = display_frame
+		if config["show_debug_strip"]:
+			frame_h, frame_w = display_frame.shape[:2]
+			preview_w = max(1, frame_w // 4)
+			preview_h = max(1, frame_h // 4)
+			s_red = cv2.resize(cv2.cvtColor(m_red, cv2.COLOR_GRAY2BGR), (preview_w, preview_h))
+			s_grn = cv2.resize(cv2.cvtColor(m_green, cv2.COLOR_GRAY2BGR), (preview_w, preview_h))
+			s_mag = cv2.resize(cv2.cvtColor(m_mag, cv2.COLOR_GRAY2BGR), (preview_w, preview_h))
+			s_wht = cv2.resize(cv2.cvtColor(m_white, cv2.COLOR_GRAY2BGR), (preview_w, preview_h))
+			masks_combined = cv2.hconcat([s_red, s_grn, s_mag, s_wht])
+			debug_output = cv2.vconcat([display_frame, masks_combined])
+
+		record_frame = debug_output if config["record_use_debug_frame"] else display_frame
+		stream_frame = debug_output if config["stream_use_debug_frame"] else display_frame
+
 		if _record_mp4 and _video_out is None and _video_path is not None:
 			fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-			output_h, output_w = final_output.shape[:2]
+			output_h, output_w = record_frame.shape[:2]
 			_video_out = cv2.VideoWriter(_video_path, fourcc, 30.0, (output_w, output_h))
 		if _video_out is not None:
-			_video_out.write(final_output)
-	
-		ret, buffer = cv2.imencode('.jpg', final_output)
-		with _frame_lock:
-			_output_frame = buffer.tobytes()
+			_video_out.write(record_frame)
+
+		if has_stream_clients:
+			ret, buffer = cv2.imencode('.jpg', stream_frame, [int(cv2.IMWRITE_JPEG_QUALITY), config["stream_jpeg_quality"]])
+			if ret:
+				with _frame_lock:
+					_output_frame = buffer.tobytes()
 
 # The main function to start the vision and scanning process
 def start_vision_system(camera_instance, record_mp4=True):
@@ -336,15 +385,25 @@ def get_latest_data():
 
 # Function to fetch the frames to the web server for live streaming
 def _generate_web_frames():
-	global _output_frame, _frame_lock
-	while True:
-		with _frame_lock:
-			if _output_frame is None:
+	global _output_frame, _frame_lock, _stream_clients
+	with _stream_lock:
+		_stream_clients += 1
+	try:
+		while True:
+			with _frame_lock:
+				if _output_frame is None:
+					frame_bytes = None
+				else:
+					frame_bytes = _output_frame
+			if frame_bytes is None:
+				time.sleep(0.001)
 				continue
-			frame_bytes = _output_frame
-		yield (b'--frame\r\n'
-			b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-		time.sleep(0.001) 
+			yield (b'--frame\r\n'
+				b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+			time.sleep(0.001)
+	finally:
+		with _stream_lock:
+			_stream_clients = max(0, _stream_clients - 1)
 
 # Display high-speed digital flipbook as live streaming
 @_app.route('/')

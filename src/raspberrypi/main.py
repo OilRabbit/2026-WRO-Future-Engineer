@@ -3,7 +3,7 @@ import time
 import datetime
 import math
 from esp_com.communication import ESP32Communicator
-from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance, set_marker_point, remove_marker_point, clear_marker_points, set_color_detection, set_all_color_detection
+from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance, set_marker_point, remove_marker_point, clear_marker_points, set_color_detection, set_all_color_detection, configure_vision_pipeline
 from picamera2 import Picamera2 as picam2
 from enum import Enum
 
@@ -26,9 +26,21 @@ camera.configure(config)
 camera.start()
 print("Camera: Activated")
 
-start_vision_system(camera, True)
-
+record_mp4 = True
 live_streaming = True
+
+# Keep the control path light: no debug strip in the hot loop, and stream the
+# main camera frame instead of the combined debug mosaic.
+configure_vision_pipeline(
+	draw_overlays=True,
+	show_debug_strip=False,
+	stream_use_debug_frame=False,
+	record_use_debug_frame=False,
+	stream_jpeg_quality=70,
+)
+
+start_vision_system(camera, record_mp4)
+
 if live_streaming:
         print("Streaming: Activated")
         start_web_server(host='0.0.0.0', port=5000)
