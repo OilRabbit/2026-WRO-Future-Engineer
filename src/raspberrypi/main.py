@@ -1,4 +1,5 @@
 # testing
+import cv2
 import time
 import datetime
 import math
@@ -109,6 +110,91 @@ def set_debug_mode(enabled):
 			stream_jpeg_quality=70,
 		)
 
+def clamp(value, minimum, maximum):
+	return max(minimum, min(maximum, value))
+
+def find_track_edge_x(track_polygon, row_y, scan_from_left, coarse_step=6):
+	if track_polygon is None:
+		return None
+
+	frame_width = video_size[0]
+	if scan_from_left:
+		x_range = range(0, frame_width, coarse_step)
+		refine_direction = -1
+	else:
+		x_range = range(frame_width - 1, -1, -coarse_step)
+		refine_direction = 1
+
+	candidate = None
+	for x in x_range:
+		if cv2.pointPolygonTest(track_polygon, (float(x), float(row_y)), False) >= 0:
+			candidate = x
+			break
+
+	if candidate is None:
+		return None
+
+	refine_x = candidate
+	while 0 <= refine_x + refine_direction < frame_width:
+		next_x = refine_x + refine_direction
+		if cv2.pointPolygonTest(track_polygon, (float(next_x), float(row_y)), False) >= 0:
+			refine_x = next_x
+		else:
+			break
+	return refine_x
+
+def measure_track_profile(track_polygon, sample_rows):
+	left_hits = []
+	right_hits = []
+
+	for row_y in sample_rows:
+		left_x = find_track_edge_x(track_polygon, row_y, scan_from_left=True)
+		right_x = find_track_edge_x(track_polygon, row_y, scan_from_left=False)
+		if left_x is None or right_x is None:
+			continue
+		if right_x - left_x < 40:
+			continue
+		left_hits.append(left_x)
+		right_hits.append(right_x)
+
+	if not left_hits:
+		return None
+
+	avg_left = sum(left_hits) / len(left_hits)
+	avg_right = sum(right_hits) / len(right_hits)
+	width = avg_right - avg_left
+	return {
+		"left_x": avg_left,
+		"right_x": avg_right,
+		"width": width,
+	}
+
+def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, recovery_mode=False):
+	sample_rows = (145, 165, 185) if recovery_mode else (175, 190, 205)
+	profile = measure_track_profile(track_polygon, sample_rows)
+	if profile is None:
+		return 0, previous_error, None
+
+	target_ratio = 0.68 if is_clockwise else 0.32
+	target_x = profile["left_x"] + profile["width"] * target_ratio
+	error = target_x - (video_size[0] / 2)
+	error_delta = error - previous_error
+
+	if recovery_mode:
+		kp = 0.70
+		kd = 0.95
+		max_steer = 80
+	else:
+		kp = 0.55
+		kd = 0.65
+		max_steer = 65
+
+	steering = (kp * error) + (kd * error_delta)
+	steering = int(round(clamp(steering, -max_steer, max_steer)))
+	profile["target_x"] = target_x
+	profile["error"] = error
+	return steering, error, profile
+
 
 # Checkpoints (default as clockwise case)
 front_point = [200, 80]
@@ -133,6 +219,8 @@ run_OC2 = False
 reset_OC = True
 num_of_turn = 0
 is_clockwise = True
+previous_wall_error = 0.0
+dash_start_time = 0.0
 start_time = 0
 end_time = 0
 recorded_time = 0
@@ -163,6 +251,8 @@ try:
                                 last_purple_lap_time = 0.0
                                 purple_wall_lockout_active = False
                                 is_clockwise = True
+                                previous_wall_error = 0.0
+                                dash_start_time = 0.0
                                 turning_point = right_turning_point
                                 state = States.FIRST_SECTOR
                                 last_state = None
@@ -223,6 +313,7 @@ try:
                                 			add_marker_point("Innerwall White", innerwall_white[0], innerwall_white[1], color=(0, 0, 255), radius=3, label="Danger")
                                 			add_marker_point("Innerwall Black", innerwall_black[0], innerwall_black[1], color=(255, 0, 0), radius=3, label="Safe")
                                 			is_clockwise = get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]
+                                			previous_wall_error = 0.0
                                 		start_turning_time = time.perf_counter_ns()
                                 		state = States.TURNING_STATE
                                 		continue
@@ -232,55 +323,68 @@ try:
 
                                 # Turn
                                 elif state == States.TURNING_STATE:
-                                	steering = 80 if is_clockwise else -80
-                                	esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn")
-                                	if (time.perf_counter_ns() - start_turning_time) / 1000000 < 1100:
-                                		print((time.perf_counter_ns() - start_turning_time) / 1000000)
+                                	turn_elapsed_ms = (time.perf_counter_ns() - start_turning_time) / 1000000
+                                	if turn_elapsed_ms < 500:
+                                		steering = 80 if is_clockwise else -80
+                                		esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-in")
                                 		continue
-                                        # state = States.INIT
-                                        # esp.send_command("0, 0, -1, stop")
-                                        # break
-                                        # indicator = clockwise_indicator if is_clockwise else anticlockwise_indicator
-                                        # if get_track_distance(indicator[0], indicator[1])[0]:
-                                        # 	time.sleep(0.001)
-                                        # 	continue
-                                        # overshoot_point = [260, 100] if is_clockwise else [140, 100]
-                                        # add_marker_point("Overshoot Point", overshoot_point[0], overshoot_point[1], color=(0, 0, 255), radius=2, label="Overshoot P")
-                                        # steering = -80 if is_clockwise else 80
-                                        # esp.send_command(str(speed) + ", 0, -1, go forward")
+
+                                	steering, previous_wall_error, profile = compute_wall_follow_steering(track["polygon"], is_clockwise, previous_wall_error, recovery_mode=True)
+                                	if profile is None:
+                                		steering = 55 if is_clockwise else -55
+                                	esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-align")
+
+                                	if turn_elapsed_ms < 700:
+                                		continue
+
+                                	if profile is not None and abs(profile["error"]) <= 18:
+                                		num_of_turn += 1
+                                		print("num turn: {}".format(num_of_turn))
+                                		dash_start_time = time.perf_counter()
+                                		state = States.DASH_AFTER_TURNING_STATE if num_of_turn < 12 else States.LAST_RUN
+                                		continue
+
+                                	if turn_elapsed_ms < 1500:
+                                		continue
+
                                 	num_of_turn += 1
                                 	print("num turn: {}".format(num_of_turn))
+                                	dash_start_time = time.perf_counter()
                                 	state = States.DASH_AFTER_TURNING_STATE if num_of_turn < 12 else States.LAST_RUN
                                 	continue
 
                                 elif state == States.DASH_AFTER_TURNING_STATE:
-                                	esp.send_command(str(speed) + ", 0, -1, forward")
-                                	time.sleep(0.5)
+                                	steering, previous_wall_error, _ = compute_wall_follow_steering(track["polygon"], is_clockwise, previous_wall_error)
+                                	esp.send_command(str(speed) + ", " + str(steering) + ", -1, settle after turn")
+                                	if time.perf_counter() - dash_start_time < 0.35:
+                                		continue
                                 	state = States.RUN_SECTOR_STATE
                                 	continue
 
                                 # Run sector and keep a certain distance from the inner barrier
                                 elif state == States.RUN_SECTOR_STATE:
-                                	esp.send_command(str(speed) + ", 0, -1, forward")
                                 	if get_track_distance(front_point[0], front_point[1])[0] == False and (get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True or get_track_distance(right_turning_point[0], right_turning_point[1])[0] == True):
                                         	state = States.TURNING_STATE
+                                        	previous_wall_error = 0.0
                                         	start_turning_time = time.perf_counter_ns()
                                         	continue
-                                	else:
-                                        	if not get_track_distance(innerwall_white[0], innerwall_white[1])[0]:
-                                        		steering = -50 if is_clockwise else 50
-                                        	elif get_track_distance(innerwall_black[0], innerwall_black[1])[0]:
-                                        		steering = 5 if is_clockwise else -5
-                                        	else:
-                                        		steering = 0
-                                        		esp.send_command(str(speed) + ", " + str(steering) + ", -1, go forward")
-                                        		continue
+                                	steering, previous_wall_error, profile = compute_wall_follow_steering(track["polygon"], is_clockwise, previous_wall_error)
+                                	if profile is None:
+                                		if not get_track_distance(innerwall_white[0], innerwall_white[1])[0]:
+                                			steering = -50 if is_clockwise else 50
+                                		elif get_track_distance(innerwall_black[0], innerwall_black[1])[0]:
+                                			steering = 5 if is_clockwise else -5
+                                		else:
+                                			steering = 0
+                                	esp.send_command(str(speed) + ", " + str(steering) + ", -1, wall follow")
+                                	continue
 
                                 # Last forward to stop
                                 elif state == States.LAST_RUN:
                                 	end_sector_point = [250, 75] if is_clockwise else [150, 75]
                                 	add_marker_point("End Sector Point", end_sector_point[0], end_sector_point[1], color=(0, 0, 255), radius=2, label="Stop P")
-                                	esp.send_command(str(speed) + ", 0, -1, move forward")
+                                	steering, previous_wall_error, _ = compute_wall_follow_steering(track["polygon"], is_clockwise, previous_wall_error)
+                                	esp.send_command(str(speed) + ", " + str(steering) + ", -1, move forward")
                                 	# Wait until the ending_point reach the wall in front of the robot
                                 	if get_track_distance(end_sector_point[0], end_sector_point[1])[0]:
                                 		time.sleep(0.001)
