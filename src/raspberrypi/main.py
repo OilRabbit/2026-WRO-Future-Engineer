@@ -202,7 +202,7 @@ def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, re
 
 def get_sector_target_ratio(is_clockwise, completed_turns):
 	start_ratio = 0.52 if is_clockwise else 0.48
-	final_ratio = 0.60 if is_clockwise else 0.40
+	final_ratio = 0.58 if is_clockwise else 0.42
 	progress = clamp((completed_turns - 1) / 4.0, 0.0, 1.0)
 	return blend(start_ratio, final_ratio, progress)
 
@@ -214,9 +214,9 @@ left_turning_point = [5, 200] #check direction
 add_marker_point("Left Turning Point", left_turning_point[0], left_turning_point[1], color=(0, 0, 255), radius=2, label="Left TP")
 right_turning_point = [395, 200] #check direction
 add_marker_point("Right Turning Point", right_turning_point[0], right_turning_point[1], color=(0, 0, 255), radius=2, label="Right TP")
-clockwise_indicator = [395, 135]
+clockwise_indicator = [395, 100]
 add_marker_point("Clockwise Indicator", clockwise_indicator[0], clockwise_indicator[1], color=(0, 0, 255), radius=2, label="C Indi")
-anticlockwise_indicator = [5, 135]
+anticlockwise_indicator = [5, 100]
 add_marker_point("Anticlockwise Indicator", anticlockwise_indicator[0], anticlockwise_indicator[1], color=(0, 0, 255), radius=2, label="AntiC Indi")
 
 turning_point = right_turning_point #check if the robot get to the position that should turn
@@ -275,9 +275,9 @@ try:
                                 add_marker_point("Left Turning Point", left_turning_point[0], left_turning_point[1], color=(0, 0, 255), radius=2, label="Left TP")
                                 right_turning_point = [395, 200] #check direction
                                 add_marker_point("Right Turning Point", right_turning_point[0], right_turning_point[1], color=(0, 0, 255), radius=2, label="Right TP")
-                                clockwise_indicator = [395, 135]
+                                clockwise_indicator = [395, 100]
                                 add_marker_point("Clockwise Indicator", clockwise_indicator[0], clockwise_indicator[1], color=(0, 0, 255), radius=2, label="C Indi")
-                                anticlockwise_indicator = [5, 135]
+                                anticlockwise_indicator = [5, 100]
                                 add_marker_point("Anticlockwise Indicator", anticlockwise_indicator[0], anticlockwise_indicator[1], color=(0, 0, 255), radius=2, label="AntiC Indi")
 
                                 print("Reset Complete. state = FIRST_SECTOR")
@@ -410,7 +410,7 @@ try:
 
                                 # Last forward to stop
                                 elif state == States.LAST_RUN:
-                                	end_sector_point = [250, 75] if is_clockwise else [150, 75]
+                                	end_sector_point = [250, 35] if is_clockwise else [150, 35]
                                 	add_marker_point("End Sector Point", end_sector_point[0], end_sector_point[1], color=(0, 0, 255), radius=2, label="Stop P")
                                 	target_ratio = get_sector_target_ratio(is_clockwise, num_of_turn)
                                 	steering, previous_wall_error, _ = compute_wall_follow_steering(track["polygon"], is_clockwise, previous_wall_error, target_ratio_override=target_ratio)
