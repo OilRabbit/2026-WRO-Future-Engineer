@@ -206,6 +206,12 @@ def get_sector_target_ratio(is_clockwise, completed_turns):
 	progress = clamp((completed_turns - 1) / 4.0, 0.0, 1.0)
 	return blend(start_ratio, final_ratio, progress)
 
+def get_sector_turn_duration_ms(completed_turns):
+	start_duration_ms = 1000
+	min_duration_ms = 750
+	progress = clamp((completed_turns - 1) / 4.0, 0.0, 1.0)
+	return blend(start_duration_ms, min_duration_ms, progress)
+
 
 # Checkpoints (default as clockwise case)
 front_point = [200, 80]
@@ -335,7 +341,8 @@ try:
                                 # Turn
                                 elif state == States.TURNING_STATE:
                                 	turn_elapsed_ms = (time.perf_counter_ns() - start_turning_time) / 1000000
-                                	if turn_elapsed_ms < 1000:
+                                	blind_turn_duration_ms = get_sector_turn_duration_ms(num_of_turn)
+                                	if turn_elapsed_ms < blind_turn_duration_ms:
                                 		steering = 80 if is_clockwise else -80
                                 		esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-in")
                                 		continue
