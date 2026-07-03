@@ -22,6 +22,7 @@ track_data = {"polygon": None, "center_x": 0, "center_y": 0}
 
 _display_masks = {"red": None, "green": None, "magenta": None, "white": None}
 _marker_points = {}
+_detection_flags = {"red": True, "green": True, "magenta": True}
 
 _data_lock = threading.Lock()
 
@@ -109,13 +110,25 @@ def isolate_largest_blob(mask):
 	return clean_mask
 
 def _process_obstacle(hsv):
-	mask_r1 = cv2.inRange(hsv, RED_LOWER1, RED_UPPER1)
-	mask_r2 = cv2.inRange(hsv, RED_LOWER2, RED_UPPER2)
-	red_mask = cv2.bitwise_or(mask_r1, mask_r2)
-	green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
+	with _data_lock:
+		red_enabled = _detection_flags["red"]
+		green_enabled = _detection_flags["green"]
 
-	r_box = get_pillar_center(red_mask, min_area = 20)
-	g_box = get_pillar_center(green_mask, min_area = 20)
+	red_mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+	green_mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+
+	r_box = None
+	g_box = None
+
+	if red_enabled:
+		mask_r1 = cv2.inRange(hsv, RED_LOWER1, RED_UPPER1)
+		mask_r2 = cv2.inRange(hsv, RED_LOWER2, RED_UPPER2)
+		red_mask = cv2.bitwise_or(mask_r1, mask_r2)
+		r_box = get_pillar_center(red_mask, min_area = 20)
+
+	if green_enabled:
+		green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
+		g_box = get_pillar_center(green_mask, min_area = 20)
 
 	largest = None
 	color = None
@@ -138,8 +151,15 @@ def _process_obstacle(hsv):
 	return obstacle, red_mask, green_mask
 
 def _process_parkinglot(hsv):
-	magenta_mask = cv2.inRange(hsv, MAGENTA_LOWER, MAGENTA_UPPER)
-	m_box = get_pillar_center(magenta_mask, min_area = 20)
+	with _data_lock:
+		magenta_enabled = _detection_flags["magenta"]
+
+	magenta_mask = np.zeros(hsv.shape[:2], dtype=np.uint8)
+	m_box = None
+
+	if magenta_enabled:
+		magenta_mask = cv2.inRange(hsv, MAGENTA_LOWER, MAGENTA_UPPER)
+		m_box = get_pillar_center(magenta_mask, min_area = 20)
 
 	if m_box:
 		parking = {"center_x": m_box[0], "center_y": m_box[1], "width": m_box[2], "height": m_box[3]}
@@ -185,6 +205,25 @@ def remove_marker_point(name):
 def clear_marker_points():
 	with _data_lock:
 		_marker_points.clear()
+
+def set_color_detection(color_name, enabled):
+	with _data_lock:
+		if color_name not in _detection_flags:
+			raise ValueError(f"Unsupported color detection flag: {color_name}")
+		_detection_flags[color_name] = bool(enabled)
+
+def get_color_detection(color_name):
+	with _data_lock:
+		if color_name not in _detection_flags:
+			raise ValueError(f"Unsupported color detection flag: {color_name}")
+		return _detection_flags[color_name]
+
+def set_all_color_detection(red=None, green=None, magenta=None):
+	updates = {"red": red, "green": green, "magenta": magenta}
+	with _data_lock:
+		for color_name, enabled in updates.items():
+			if enabled is not None:
+				_detection_flags[color_name] = bool(enabled)
 
 # Thread function for scanning the track
 def _vision_loop():

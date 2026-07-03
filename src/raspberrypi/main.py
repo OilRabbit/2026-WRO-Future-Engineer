@@ -3,7 +3,7 @@ import time
 import datetime
 import math
 from esp_com.communication import ESP32Communicator
-from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance, set_marker_point, remove_marker_point, clear_marker_points
+from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance, set_marker_point, remove_marker_point, clear_marker_points, set_color_detection, set_all_color_detection
 from picamera2 import Picamera2 as picam2
 from enum import Enum
 
@@ -66,6 +66,18 @@ def add_marker_point(name, x, y, color=(0, 255, 255), radius=5, label=None):
 
 def remove_marker(name):
 	remove_marker_point(name)
+
+def set_red_detection(enabled):
+	set_color_detection("red", enabled)
+
+def set_green_detection(enabled):
+	set_color_detection("green", enabled)
+
+def set_magenta_detection(enabled):
+	set_color_detection("magenta", enabled)
+
+def set_color_block_detection(red=None, green=None, magenta=None):
+	set_all_color_detection(red=red, green=green, magenta=magenta)
 
 
 # Checkpoints (default as clockwise case)
