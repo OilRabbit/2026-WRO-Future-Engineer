@@ -305,7 +305,7 @@ def _generate_web_frames():
 			frame_bytes = _output_frame
 		yield (b'--frame\r\n'
 			b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
-		time.sleep(0.02) 
+		time.sleep(0.001) 
 
 # Display high-speed digital flipbook as live streaming
 @_app.route('/')

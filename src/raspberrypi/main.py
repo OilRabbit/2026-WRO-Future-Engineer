@@ -3,7 +3,7 @@ import time
 import datetime
 import math
 from esp_com.communication import ESP32Communicator
-from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance, set_marker_point
+from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance, set_marker_point, remove_marker_point, clear_marker_points
 from picamera2 import Picamera2 as picam2
 from enum import Enum
 
@@ -37,27 +37,6 @@ else:
 
 print("======= End of Init =======")
 
-# Global variables
-run_OC1 = False
-run_OC2 = False
-reset_OC = True
-num_of_turn = 0
-is_clockwise = True
-state = 0
-start_time = 0
-end_time = 0
-recorded_time = 0
-
-#States
-class States(Enum):
-	INIT = 0
-	FIRST_SECTOR = 1 #Move forward until it knows the direction to run
-	WAIT_TURN_STATE = 2 #Move forward for fixed distance to get to the ideal point to turn
-	TURNING_STATE = 3 #Turn until it is parallel to the next path
-	DASH_AFTER_TURNING_STATE = 4 #Move forward until it passed the corner sector
-	RUN_SECTOR_STATE = 5 #Move forward until is time to turn
-	LAST_RUN = 6 #Move forward to stop at the right place
-
 def esp_replyNprint():
         try:
                 reply = esp.read_message()
@@ -85,87 +64,50 @@ def stop_vehicle(reason):
 def add_marker_point(name, x, y, color=(0, 255, 255), radius=5, label=None):
         set_marker_point(name, x, y, color=color, radius=radius, label=label)
 
-def calculate_oc2_steering_bias(track_data, obstacle_data, current_angle):
-        if not hasattr(calculate_oc2_steering_bias, "was_dodging"):
-                calculate_oc2_steering_bias.was_dodging = False
-                calculate_oc2_steering_bias.last_dodge_dir = None
+def remove_marker(name):
+	remove_marker_point(name)
 
-        target_angle = current_angle
 
-        base_kick = 30.0
-        gain_multiplier = 0.8
-        max_clamp = 85.0
-        deadzone_weigh = 3.0
-
-        COUNTER_STEER_FORCE = 25.0
-        COUNTER_STEER_TIME = 0.08
-
-        pillar_detected_this_frame = False
-
-        if obstacle_data["color"] in ["RED", "GREEN"]:
-                cx = obstacle_data["center_x"]
-                obstacle_area = (obstacle_data["width"] * obstacle_data["height"]) // 100
-
-                if (0 <= cx <= deadzone_weigh) or (640-deadzone_weigh <= cx <= 640):
-                        print(f"[FILTER_IGNORE] Spotted {obstacle_data['color']} pillar at boundary edge (X: {cx}). Skipping processing.")
-                        return target_angle
-
-                print(f"[OBSTACLE_ALERT] Mid-lane Pillar Active! Color: {obstacle_data['color']} | Center X: {cx} | Area: {obstacle_area}")
-
-                if obstacle_area > 20:
-                        pillar_detected_this_frame = True
-                        dynamic_offset = base_kick + (obstacle_area * gain_multiplier)
-                        dynamic_offset = min(dynamic_offset, max_clamp)
-
-                        if obstacle_data["color"] == "RED":
-                                target_angle += dynamic_offset
-                                calculate_oc2_steering_bias.was_dodging = True
-                                calculate_oc2_steering_bias.last_dodge_dir = "RIGHT"
-                                print(f"[AVOIDANCE_ACTION!!] RED Pillar. Steering Bias RIGHT (+{dynamic_offset:.2f}).")
-                        elif obstacle_data["color"] == "GREEN":
-                                target_angle -= dynamic_offset
-                                calculate_oc2_steering_bias.was_dodging = True
-                                calculate_oc2_steering_bias.last_dodge_dir = "LEFT"
-                                print(f"[AVOIDANCE_ACTION!!] GREEN Pillar. Steering Bias LEFT (-{dynamic_offset:.2f}).")
-                else:
-                        print("[AVOIDANCE_SKIP] Distance gap safe. Skipping bias modifier adjustment.")
-
-        if not pillar_detected_this_frame and calculate_oc2_steering_bias.was_dodging:
-                print(f"[COUNTER-STEER RECOVERY] Pillar cleared! Executing stabilization correction.")
-
-                if calculate_oc2_steering_bias.last_dodge_dir == "RIGHT":
-                        recovery_angle = -COUNTER_STEER_FORCE
-                        target_angle += recovery_angle
-                        print(f" -> counter action: Pulsing LEFT ({recovery_angle}) to catch alignment.")
-                else:
-                        recovery_angle = COUNTER_STEER_FORCE
-                        target_angle += recovery_angle
-                        print(f" -> counter action: Pulsing RIGHT (+{recovery_angle}) to catch alignment.")
-
-                calculate_oc2_steering_bias.was_dodging = False
-                calculate_oc2_steering_bias.last_dodge_dir = None
-
-        return target_angle
-
-state = States.INIT
-last_state = None
-
-#Checkpoints (default as clockwise case)
+# Checkpoints (default as clockwise case)
 front_point = [200, 80]
-add_marker_point("Front TP", front_point[0], front_point[1], color=(0, 0, 255), radius=6, label="Front P")
+add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
 left_turning_point = [5, 200] #check direction
-add_marker_point("Left TP", left_turning_point[0], left_turning_point[1], color=(0, 0, 255), radius=6, label="Left TP")
+add_marker_point("Left Turning Point", left_turning_point[0], left_turning_point[1], color=(0, 0, 255), radius=2, label="Left TP")
 right_turning_point = [395, 200] #check direction
-add_marker_point("Right TP", right_turning_point[0], right_turning_point[1], color=(0, 0, 255), radius=6, label="Right TP")
+add_marker_point("Right Turning Point", right_turning_point[0], right_turning_point[1], color=(0, 0, 255), radius=2, label="Right TP")
 clockwise_indicator = [395, 135]
-add_marker_point("Clockwise Indicator", clockwise_indicator[0], clockwise_indicator[1], color=(0, 0, 255), radius=6, label="C Indi")
+add_marker_point("Clockwise Indicator", clockwise_indicator[0], clockwise_indicator[1], color=(0, 0, 255), radius=2, label="C Indi")
 anticlockwise_indicator = [5, 135]
-add_marker_point("Anticlockwise Indicator", anticlockwise_indicator[0], anticlockwise_indicator[1], color=(0, 0, 255), radius=6, label="AntiC Indi")
+add_marker_point("Anticlockwise Indicator", anticlockwise_indicator[0], anticlockwise_indicator[1], color=(0, 0, 255), radius=2, label="AntiC Indi")
 
 turning_point = right_turning_point #check if the robot get to the position that should turn
 track_left = [375, 225] #check if the robot is getting left from the ideal track
 track_right = [400, 225] #check if the robot is getting right from the ideal track
 ending_point = [200, 62.5] #check if the robot is at the ideal point to end
+
+# Global variables
+run_OC1 = False
+run_OC2 = False
+reset_OC = True
+num_of_turn = 0
+is_clockwise = True
+start_time = 0
+end_time = 0
+recorded_time = 0
+
+# OC1 States
+class States(Enum):
+	INIT = 0
+	FIRST_SECTOR = 1 #Move forward until it knows the direction to run
+	WAIT_TURN_STATE = 2 #Move forward for fixed distance to get to the ideal point to turn
+	TURNING_STATE = 3 #Turn until it is parallel to the next path
+	DASH_AFTER_TURNING_STATE = 4 #Move forward until it passed the corner sector
+	RUN_SECTOR_STATE = 5 #Move forward until is time to turn
+	LAST_RUN = 6 #Move forward to stop at the right place
+
+state = States.INIT
+last_state = States.INIT
+speed = 10
 
 try:
         print("IDLE")
@@ -182,12 +124,21 @@ try:
                                 turning_point = right_turning_point
                                 state = States.FIRST_SECTOR
                                 last_state = None
-                                if hasattr(calculate_oc2_steering_bias, "was_dodging"):
-                                        calculate_oc2_steering_bias.was_dodging = False
-                                        calculate_oc2_steering_bias.last_dodge_dir = None
-                                print(f"[{state.name}] FIRST_SECTOR - Reset Complete")
+                                clear_marker_points()
+                                # Checkpoints (default as clockwise case)
+                                front_point = [200, 80]
+                                add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
+                                left_turning_point = [5, 200] #check direction
+                                add_marker_point("Left Turning Point", left_turning_point[0], left_turning_point[1], color=(0, 0, 255), radius=2, label="Left TP")
+                                right_turning_point = [395, 200] #check direction
+                                add_marker_point("Right Turning Point", right_turning_point[0], right_turning_point[1], color=(0, 0, 255), radius=2, label="Right TP")
+                                clockwise_indicator = [395, 135]
+                                add_marker_point("Clockwise Indicator", clockwise_indicator[0], clockwise_indicator[1], color=(0, 0, 255), radius=2, label="C Indi")
+                                anticlockwise_indicator = [5, 135]
+                                add_marker_point("Anticlockwise Indicator", anticlockwise_indicator[0], anticlockwise_indicator[1], color=(0, 0, 255), radius=2, label="AntiC Indi")
+
+                                print("Reset Complete. state = FIRST_SECTOR")
                         reset_OC = False
-                        print(f"[{state.name}] Resetted")
                         continue
 
                 # ======================================================================
@@ -205,76 +156,100 @@ try:
                                         break
                                 _, _, track = get_latest_data()
 
-                                if state == States.FIRST_SECTOR:
-                                        esp.send_command("10, 0, -1, go forward")
-                                        if get_track_distance(front_point[0], front_point[1])[0] == True or (get_track_distance(left_turning_point[0], left_turning_point[1])[0] == False and get_track_distance(right_turning_point[0], right_turning_point[1])[0] == False):
-                                                time.sleep(0.005)
-                                                continue
-                                        else:
-                                        	print("Detected")
-                                        	state = States.INIT
-                                        	esp.send_command("0, 0, -1, stop")
-                                        	if (get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0] == True):
-                                        		print("Clockwise")
-                                        	else:
-                                        		print("Anticlockwise")
-                                        	break
-                                        # if get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True:
-                                        # 	print("Detected")
-                                        # 	is_clockwise = False
-                                        # 	turning_point = left_turning_point
-                                        # 	track_left = [0, 225]
-                                        # 	track_right = [25, 225]
-                                        # 	state = States.INIT
-                                        # 	esp.send_command("0, 0, -1, stop")
-                                        # 	break
-                                        # 	# state = States.WAIT_TURN_STATE
-                                        # 	# continue
+                                if last_state != state:
+                                	print(f"\n[{state.name}]")
+                                	last_state = state
 
-                                # Wait turn
-                                elif state == States.WAIT_TURN_STATE:
-                                        esp.send_command("10, 0, 100, wait turn")
-                                        state = States.TURNING_STATE
-                                        continue
+                                if state == States.FIRST_SECTOR:
+                                	esp.send_command(str(speed) + ", 0, -1, forward")
+                                	if get_track_distance(front_point[0], front_point[1])[0] == False and (get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True or get_track_distance(right_turning_point[0], right_turning_point[1])[0] == True):
+                                		if num_of_turn == 0:
+                                			if get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]:
+                                				is_clockwise = True
+                                				# front_point = [140, 80]
+                                				remove_marker("Anticlockwise Indicator")
+                                				innerwall_white = [335, 220]
+                                				innerwall_black = [365, 220]
+                                			else:
+                                				is_clockwise = False
+                                				# front_point = [260, 80]
+                                				remove_marker("Clockwise Indicator")
+                                				innerwall_white = [65, 220]
+                                				innerwall_black = [35, 220]
+                                			add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
+                                			add_marker_point("Innerwall White", innerwall_white[0], innerwall_white[1], color=(0, 0, 255), radius=3, label="Danger")
+                                			add_marker_point("Innerwall Black", innerwall_black[0], innerwall_black[1], color=(255, 0, 0), radius=3, label="Safe")
+                                			is_clockwise = get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]
+                                		start_turning_time = time.perf_counter_ns()
+                                		state = States.TURNING_STATE
+                                		continue
+                                	else:
+                                        	time.sleep(0.001)
+                                        	continue
 
                                 # Turn
                                 elif state == States.TURNING_STATE:
-                                        num_of_turn += 1
-                                        esp.send_command("10, 70, 200, turn")
-                                        state = States.DASH_AFTER_TURNING_STATE
-                                        continue
+                                	steering = 80 if is_clockwise else -80
+                                	esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn")
+                                	if (time.perf_counter_ns() - start_turning_time) / 1000000 < 1100:
+                                		print((time.perf_counter_ns() - start_turning_time) / 1000000)
+                                		continue
+                                        # state = States.INIT
+                                        # esp.send_command("0, 0, -1, stop")
+                                        # break
+                                        # indicator = clockwise_indicator if is_clockwise else anticlockwise_indicator
+                                        # if get_track_distance(indicator[0], indicator[1])[0]:
+                                        # 	time.sleep(0.001)
+                                        # 	continue
+                                        # overshoot_point = [260, 100] if is_clockwise else [140, 100]
+                                        # add_marker_point("Overshoot Point", overshoot_point[0], overshoot_point[1], color=(0, 0, 255), radius=2, label="Overshoot P")
+                                        # steering = -80 if is_clockwise else 80
+                                        # esp.send_command(str(speed) + ", 0, -1, go forward")
+                                	num_of_turn += 1
+                                	print("num turn: {}".format(num_of_turn))
+                                	state = States.DASH_AFTER_TURNING_STATE if num_of_turn < 12 else States.LAST_RUN
+                                	continue
 
-                                # Dash to pass the corner
                                 elif state == States.DASH_AFTER_TURNING_STATE:
-                                        esp.send_command("10, 0, 100, go forward")
-                                        if num_of_turn == 12:
-                                                state = States.LAST_RUN
-                                        else:
-                                                state = States.RUN_SECTOR_STATE
-                                        continue
+                                	esp.send_command(str(speed) + ", 0, -1, forward")
+                                	time.sleep(0.5)
+                                	state = States.RUN_SECTOR_STATE
+                                	continue
 
                                 # Run sector and keep a certain distance from the inner barrier
                                 elif state == States.RUN_SECTOR_STATE:
-                                        if (get_track_distance(track_right[0], track_right[1])[0] == True and is_clockwise) or (get_track_distance(track_left[0], track_left[1])[0] == True and not is_clockwise):
-                                                esp.send_command("10, 10, -1, move right")
-                                        elif (get_track_distance(track_left[0], track_left[1])[0] == False and is_clockwise) or (get_track_distance(track_right[0], track_right[1])[0] == False and not is_clockwise):
-                                                esp.send_command("10, 10, -1, move left")
-                                        if get_track_distance(turning_point[0], turning_point[1])[0] == True:
-                                                state = States.WAIT_TURN_STATE
-                                        continue
+                                	esp.send_command(str(speed) + ", 0, -1, forward")
+                                	if get_track_distance(front_point[0], front_point[1])[0] == False and (get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True or get_track_distance(right_turning_point[0], right_turning_point[1])[0] == True):
+                                        	state = States.TURNING_STATE
+                                        	start_turning_time = time.perf_counter_ns()
+                                        	continue
+                                	else:
+                                        	if not get_track_distance(innerwall_white[0], innerwall_white[1])[0]:
+                                        		steering = -50 if is_clockwise else 50
+                                        	elif get_track_distance(innerwall_black[0], innerwall_black[1])[0]:
+                                        		steering = 5 if is_clockwise else -5
+                                        	else:
+                                        		steering = 0
+                                        		esp.send_command(str(speed) + ", " + str(steering) + ", -1, go forward")
+                                        		continue
 
                                 # Last forward to stop
                                 elif state == States.LAST_RUN:
-                                        esp.send_command("10, 0, -1, move forward")
-                                        # Wait until the ending_point reach the wall in front of the robot
-                                        while get_track_distance(ending_point[0], ending_point[1])[0] == True:
-                                                time.sleep(0.005)
-                                        esp.send_command("0, 0, 0, motor stop")
-                                        end_time = time.pref_counter()
-                                        break
+                                	end_sector_point = [250, 75] if is_clockwise else [150, 75]
+                                	add_marker_point("End Sector Point", end_sector_point[0], end_sector_point[1], color=(0, 0, 255), radius=2, label="Stop P")
+                                	esp.send_command(str(speed) + ", 0, -1, move forward")
+                                	# Wait until the ending_point reach the wall in front of the robot
+                                	if get_track_distance(end_sector_point[0], end_sector_point[1])[0]:
+                                		time.sleep(0.001)
+                                		continue
+                                	esp.send_command("0, 0, 0, motor stop")
+                                	end_time = time.perf_counter()
+                                	run_OC1 = False
+                                	reset_OC = True
+                                	break
 
                                 # End of OC1 FSM #
-                                time.sleep(0.005)
+                                time.sleep(0.001)
                 elif run_OC2:
                         send_command_logged("OC2")
                         while run_OC2:
@@ -283,7 +258,7 @@ try:
                                         stop_vehicle("OC2 stop requested by ESP32")
                                         run_OC2 = False
                                         break
-                                time.sleep(0.005)
+                                time.sleep(0.001)
 
                 else:
                         recorded_time = end_time - start_time
@@ -296,7 +271,7 @@ try:
                                 reset_OC = True
                                 run_OC2 = True
                                 continue
-                time.sleep(0.05)
+                time.sleep(0.001)
 
 except KeyboardInterrupt:
         print("\nShutting down software pipeline gracefully...")

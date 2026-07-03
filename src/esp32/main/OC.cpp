@@ -17,8 +17,8 @@ bool is_moving_distance = false;
 
 void OC1_program() {
   String cmd = receiveNprint_msg(TFT_LEFT_CLN, 13, 2, TFT_WHITE, false);
-  
-  if (cmd.length() > 0 && cmd != "OC1" && cmd != "OC2") {
+  if (cmd == "EOC1") run_OC1 = false;
+  else if (cmd.length() > 0 && cmd != "OC1") {
     
     int firstComma = cmd.indexOf(',');
     int secondComma = cmd.indexOf(',', firstComma + 1);
