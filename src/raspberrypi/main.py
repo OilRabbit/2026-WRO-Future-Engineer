@@ -91,6 +91,24 @@ def set_magenta_detection(enabled):
 def set_color_block_detection(red=None, green=None, magenta=None):
 	set_all_color_detection(red=red, green=green, magenta=magenta)
 
+def set_debug_mode(enabled):
+	if enabled:
+		configure_vision_pipeline(
+			draw_overlays=True,
+			show_debug_strip=True,
+			stream_use_debug_frame=True,
+			record_use_debug_frame=True,
+			stream_jpeg_quality=85,
+		)
+	else:
+		configure_vision_pipeline(
+			draw_overlays=True,
+			show_debug_strip=False,
+			stream_use_debug_frame=False,
+			record_use_debug_frame=False,
+			stream_jpeg_quality=70,
+		)
+
 
 # Checkpoints (default as clockwise case)
 front_point = [200, 80]
