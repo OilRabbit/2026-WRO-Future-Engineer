@@ -166,6 +166,7 @@ try:
                                         stop_vehicle("OC1 stop requested by ESP32")
                                         run_OC1 = False
                                         break
+                                set_color_block_detection(False, False, False)
                                 _, _, track = get_latest_data()
 
                                 if last_state != state:
