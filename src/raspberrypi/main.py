@@ -113,6 +113,10 @@ def set_debug_mode(enabled):
 def clamp(value, minimum, maximum):
 	return max(minimum, min(maximum, value))
 
+def blend(start, end, progress):
+	progress = clamp(progress, 0.0, 1.0)
+	return start + (end - start) * progress
+
 def find_track_edge_x(track_polygon, row_y, scan_from_left, coarse_step=6):
 	if track_polygon is None:
 		return None
@@ -169,13 +173,13 @@ def measure_track_profile(track_polygon, sample_rows):
 		"width": width,
 	}
 
-def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, recovery_mode=False):
+def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, recovery_mode=False, target_ratio_override=None):
 	sample_rows = (120, 140, 160) if recovery_mode else (170, 185, 200)
 	profile = measure_track_profile(track_polygon, sample_rows)
 	if profile is None:
 		return 0, previous_error, None
 
-	target_ratio = 0.6 if is_clockwise else 0.4
+	target_ratio = target_ratio_override if target_ratio_override is not None else (0.6 if is_clockwise else 0.4)
 	target_x = profile["left_x"] + profile["width"] * target_ratio
 	error = target_x - (video_size[0] / 2)
 	error_delta = error - previous_error
@@ -193,7 +197,35 @@ def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, re
 	steering = int(round(clamp(steering, -max_steer, max_steer)))
 	profile["target_x"] = target_x
 	profile["error"] = error
+	profile["target_ratio"] = target_ratio
 	return steering, error, profile
+
+def limit_steering_rate(target_steering, previous_steering, max_step):
+	steering_delta = target_steering - previous_steering
+	steering_delta = clamp(steering_delta, -max_step, max_step)
+	return int(round(previous_steering + steering_delta))
+
+def get_post_turn_target_ratio(is_clockwise, elapsed_since_turn):
+	start_ratio = 0.52 if is_clockwise else 0.48
+	final_ratio = 0.60 if is_clockwise else 0.40
+	return blend(start_ratio, final_ratio, elapsed_since_turn / 0.9)
+
+def apply_inner_wall_guard(steering, is_clockwise, probe_point):
+	inside_track, edge_distance = get_track_distance(probe_point[0], probe_point[1])
+	toward_inner_wall = steering > 0 if is_clockwise else steering < 0
+
+	if not inside_track or edge_distance < 8:
+		return (-35 if is_clockwise else 35), edge_distance
+
+	if toward_inner_wall and edge_distance < 22:
+		progress = (edge_distance - 8) / 14
+		toward_cap = int(round(blend(6, 22, progress)))
+		if is_clockwise:
+			steering = min(steering, toward_cap)
+		else:
+			steering = max(steering, -toward_cap)
+
+	return steering, edge_distance
 
 
 # Checkpoints (default as clockwise case)
@@ -220,6 +252,7 @@ reset_OC = True
 num_of_turn = 0
 is_clockwise = True
 previous_wall_error = 0.0
+previous_steering = 0
 dash_start_time = 0.0
 start_time = 0
 end_time = 0
@@ -252,6 +285,7 @@ try:
                                 purple_wall_lockout_active = False
                                 is_clockwise = True
                                 previous_wall_error = 0.0
+                                previous_steering = 0
                                 dash_start_time = 0.0
                                 turning_point = right_turning_point
                                 state = States.FIRST_SECTOR
@@ -314,6 +348,7 @@ try:
                                 			add_marker_point("Innerwall Black", innerwall_black[0], innerwall_black[1], color=(255, 0, 0), radius=3, label="Safe")
                                 			is_clockwise = get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]
                                 			previous_wall_error = 0.0
+                                			previous_steering = 0
                                 		start_turning_time = time.perf_counter_ns()
                                 		state = States.TURNING_STATE
                                 		continue
@@ -326,15 +361,25 @@ try:
                                 	turn_elapsed_ms = (time.perf_counter_ns() - start_turning_time) / 1000000
                                 	if turn_elapsed_ms < 1000:
                                 		steering = 80 if is_clockwise else -80
+                                		previous_steering = steering
                                 		esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-in")
                                 		continue
 
-                                	steering, previous_wall_error, profile = compute_wall_follow_steering(track["polygon"], is_clockwise, previous_wall_error, recovery_mode=True)
+                                	steering, previous_wall_error, profile = compute_wall_follow_steering(
+                                		track["polygon"],
+                                		is_clockwise,
+                                		previous_wall_error,
+                                		recovery_mode=True,
+                                		target_ratio_override=get_post_turn_target_ratio(is_clockwise, 0.0),
+                                	)
                                 	if profile is None:
                                 		steering = 55 if is_clockwise else -55
+                                	steering = limit_steering_rate(steering, previous_steering, 10)
+                                	steering, _ = apply_inner_wall_guard(steering, is_clockwise, innerwall_white)
+                                	previous_steering = steering
                                 	esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-align")
 
-                                	if turn_elapsed_ms < 700:
+                                	if turn_elapsed_ms < 1100:
                                 		continue
 
                                 	if profile is not None and abs(profile["error"]) <= 18:
@@ -352,11 +397,21 @@ try:
                                 	dash_start_time = time.perf_counter()
                                 	state = States.DASH_AFTER_TURNING_STATE if num_of_turn < 12 else States.LAST_RUN
                                 	continue
-
+                                
                                 elif state == States.DASH_AFTER_TURNING_STATE:
-                                	steering, previous_wall_error, _ = compute_wall_follow_steering(track["polygon"], is_clockwise, previous_wall_error)
+                                	elapsed_since_turn = time.perf_counter() - dash_start_time
+                                	target_ratio = get_post_turn_target_ratio(is_clockwise, elapsed_since_turn)
+                                	steering, previous_wall_error, _ = compute_wall_follow_steering(
+                                		track["polygon"],
+                                		is_clockwise,
+                                		previous_wall_error,
+                                		target_ratio_override=target_ratio,
+                                	)
+                                	steering = limit_steering_rate(steering, previous_steering, 8)
+                                	steering, _ = apply_inner_wall_guard(steering, is_clockwise, innerwall_white)
+                                	previous_steering = steering
                                 	esp.send_command(str(speed) + ", " + str(steering) + ", -1, settle after turn")
-                                	if time.perf_counter() - dash_start_time < 0.35:
+                                	if elapsed_since_turn < 0.45:
                                 		continue
                                 	state = States.RUN_SECTOR_STATE
                                 	continue
@@ -366,9 +421,17 @@ try:
                                 	if get_track_distance(front_point[0], front_point[1])[0] == False and (get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True or get_track_distance(right_turning_point[0], right_turning_point[1])[0] == True):
                                         	state = States.TURNING_STATE
                                         	previous_wall_error = 0.0
+                                        	previous_steering = 0
                                         	start_turning_time = time.perf_counter_ns()
                                         	continue
-                                	steering, previous_wall_error, profile = compute_wall_follow_steering(track["polygon"], is_clockwise, previous_wall_error)
+                                	elapsed_since_turn = time.perf_counter() - dash_start_time
+                                	target_ratio = get_post_turn_target_ratio(is_clockwise, elapsed_since_turn)
+                                	steering, previous_wall_error, profile = compute_wall_follow_steering(
+                                		track["polygon"],
+                                		is_clockwise,
+                                		previous_wall_error,
+                                		target_ratio_override=target_ratio,
+                                	)
                                 	if profile is None:
                                 		if not get_track_distance(innerwall_white[0], innerwall_white[1])[0]:
                                 			steering = -50 if is_clockwise else 50
@@ -376,6 +439,9 @@ try:
                                 			steering = 5 if is_clockwise else -5
                                 		else:
                                 			steering = 0
+                                	steering = limit_steering_rate(steering, previous_steering, 6)
+                                	steering, _ = apply_inner_wall_guard(steering, is_clockwise, innerwall_white)
+                                	previous_steering = steering
                                 	esp.send_command(str(speed) + ", " + str(steering) + ", -1, wall follow")
                                 	continue
 
@@ -384,6 +450,9 @@ try:
                                 	end_sector_point = [250, 75] if is_clockwise else [150, 75]
                                 	add_marker_point("End Sector Point", end_sector_point[0], end_sector_point[1], color=(0, 0, 255), radius=2, label="Stop P")
                                 	steering, previous_wall_error, _ = compute_wall_follow_steering(track["polygon"], is_clockwise, previous_wall_error)
+                                	steering = limit_steering_rate(steering, previous_steering, 6)
+                                	steering, _ = apply_inner_wall_guard(steering, is_clockwise, innerwall_white)
+                                	previous_steering = steering
                                 	esp.send_command(str(speed) + ", " + str(steering) + ", -1, move forward")
                                 	# Wait until the ending_point reach the wall in front of the robot
                                 	if get_track_distance(end_sector_point[0], end_sector_point[1])[0]:
