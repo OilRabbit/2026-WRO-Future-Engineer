@@ -170,20 +170,20 @@ def measure_track_profile(track_polygon, sample_rows):
 	}
 
 def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, recovery_mode=False):
-	sample_rows = (145, 165, 185) if recovery_mode else (175, 190, 205)
+	sample_rows = (120, 140, 160) if recovery_mode else (170, 185, 200)
 	profile = measure_track_profile(track_polygon, sample_rows)
 	if profile is None:
 		return 0, previous_error, None
 
-	target_ratio = 0.68 if is_clockwise else 0.32
+	target_ratio = 0.6 if is_clockwise else 0.4
 	target_x = profile["left_x"] + profile["width"] * target_ratio
 	error = target_x - (video_size[0] / 2)
 	error_delta = error - previous_error
 
 	if recovery_mode:
-		kp = 0.70
-		kd = 0.95
-		max_steer = 80
+		kp = 0.45
+		kd = 0.55
+		max_steer = 55
 	else:
 		kp = 0.55
 		kd = 0.65
@@ -324,7 +324,7 @@ try:
                                 # Turn
                                 elif state == States.TURNING_STATE:
                                 	turn_elapsed_ms = (time.perf_counter_ns() - start_turning_time) / 1000000
-                                	if turn_elapsed_ms < 500:
+                                	if turn_elapsed_ms < 1000:
                                 		steering = 80 if is_clockwise else -80
                                 		esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-in")
                                 		continue
