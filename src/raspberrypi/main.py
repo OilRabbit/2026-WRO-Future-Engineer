@@ -20,7 +20,7 @@ print("Camera: Activated")
 
 start_vision_system(camera, True)
 
-live_streaming = True
+live_streaming = False
 if live_streaming:
 	print("Streaming: Activated")
 	start_web_server(host='0.0.0.0', port=5000)
@@ -47,6 +47,10 @@ turn_indi_2 = [320, 170] #check when to turn
 sector_indi = [[240, 140], [400, 140]] #check when is sector
 turn_time = 0
 run_time = 0
+lot_count = 0
+lot_count_flag = 1
+pillar_count = 0
+pillar_count_flag = 1
 
 front_turning_point = [320, 70]
 left_turning_point = [40, 200] #check direction
@@ -66,6 +70,13 @@ class States(Enum):
 	RUN_SECTOR_STATE = 5 #Move forward until is time to turn
 	LAST_RUN = 6 #Move forward to stop at the right place
 
+class OC2_States(Enum):
+	INIT = 0
+	LEAVE = 1
+	WHITE = 2
+	PILLAR = 3
+	ENTER = 4
+
 # Function for receiving msg from ESP and print the message with timestamp
 def esp_replyNprint():
 	timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -76,6 +87,7 @@ def esp_replyNprint():
 	return reply
 
 state = States.INIT
+OC2_state = OC2_States.INIT
 try:
 	print("IDLE")
 	while True:
@@ -88,8 +100,13 @@ try:
 				num_of_turn = 0
 				is_clockwise = True
 				turning_point = right_turning_point
+				lot_count = 0
+				lot_count_flag = 1
+				pillar_count = 0
+				pillar_count_flag = 1
 				state = States.FIRST_SECTOR
-				print("FIRST_SECTOR")
+				OC2_state = OC2_States.LEAVE
+				print("leave")
 			if run_OC2:
 				angle = 0
 			# End of reset #
@@ -99,7 +116,7 @@ try:
 			continue
 			
 		# TODO: add timer
-		elif run_OC1:
+		elif run_OC2:
 			esp.send_command("OC1")
 			start_time = time.perf_counter()
 			while run_OC1:
@@ -264,40 +281,73 @@ try:
 				# End of OC1 FSM #
 				time.sleep(0.005)
 				
-		elif run_OC2:
+		elif run_OC1:
 			esp.send_command("OC2")
 			while run_OC1:
 				reply = esp_replyNprint()
 				if reply == "EOC2":
 					run_OC2 = False
 					break
-				pillar, park, track = get_latest_data()
+				pillar, lot, track = get_latest_data()
+				time.sleep(0.01)
 
 				# OC2 FSM #
-				#esp.send_command("7.5, -100, -1, move")
-				#time.sleep(0.75)
-				#esp.send_command("-8, 100, -1, move")
-				#time.sleep(0.75)
-				#esp.send_command("7.5, -100, -1, move")
-				#time.sleep(1.5)
-				run_time += 1
-				print(run_time)
-				if run_time == 1900:
+				#left = [240, 120] 
+				#right = [400, 120]
+				#while 1:
+					#dl = get_track_distance(left[0], left[1])[1]
+					#dr = get_track_distance(right[0], right[1])[1]
+					#esp.send_command(str((dl + dr >= 0) * 16 - 8) + ", " +  str(dl + dr))
+				if lot["center_x"] > 0:
+					if lot_count_flag:
+						lot_count += 1
+						print("lot " + lot_count)
+						lot_count_flag = 0
+						pillar_count_temp = pillar_count
+				elif (pillar_count - 2) > pillar_count_temp:
+					lot_count_flag = 1
+				
+				if lot_count == 4 and pillar_count % 3 == 0:
+					OC2_state = OC2_States.ENTER
+
+				if OC2_state == OC2_States.LEAVE:
+					if track["center_x"] < 320:
+						is_clockwise = False
+					esp.send_command("8, " + str(is_clockwise * 200 - 100) + ", -1, turn")
+					sleep(1)
+					OC2_state = OC2_States.WHITE
+					print("white")
+					continue
+
+				if OC2_state == OC2_States.WHITE:
+					if pillar["color"] != None:
+						OC2_state = OC2_States.PILLAR
+						print("pillar")
+						continue
+					angle = (track["center_x"] - 320) / 0.3
+					esp.send_command("8, " + str(angle) + ", -1, move")
+					continue
+
+				if OC2_state == OC2_States.PILLAR:
+					if pillar["color"] == None:
+						OC2_state = OC2_States.WHITE
+						print("white")
+						continue
+					angle = (pillar["center_x"] * 2 + ((pillar["color"] == "RED") * 2 - 1) * pillar["center_y"] - 660) / 1.8
+					esp.send_command("8, " + str(angle) + ", -1, move")
+					if pillar["center_y"] > 320:
+						if pillar_count_flag:
+							pillar_count += 1
+							print("pillar " + pillar_count)
+							pillar_count_flag = 0
+					else:
+						pillar_count_flag = 1
+					continue
+				
+				if OC2_state == OC2_States.ENTER:
 					esp.send_command("0, 0, 0, stop")
 					run_OC1 = 0
 					break
-				if pillar["color"] == "RED":
-					#print("red")
-					angle = (pillar["center_x"] * 4 / 3 + pillar["center_y"] - 480) / 2
-				elif pillar["color"] == "GREEN":
-					#print("green")
-					angle = (pillar["center_x"] * 4 / 3 - pillar["center_y"] - 480) / 2
-				else:
-					#print("none")
-					angle = (track["center_x"] - 320) / 0.3
-				#print(angle)
-				esp.send_command("8, " + str(angle) + ", -1, move")
-				time.sleep(0.025)
 
 				# End of OC2 FSM #
 				time.sleep(0.005)
