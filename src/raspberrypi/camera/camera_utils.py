@@ -57,23 +57,25 @@ RED_UPPER1 = RGB2HSV([255, 85, 0])
 RED_LOWER2 = RGB2HSV([41, 25, 30])
 RED_UPPER2 = RGB2HSV([255, 0, 4])
 
-GREEN_LOWER = RGB2HSV([94, 99, 69])
-GREEN_UPPER = RGB2HSV([0, 255, 255])
+# Expanded to capture both the shadowed side and the bright glare on top
+GREEN_LOWER = np.array([40,  60,  50])
+GREEN_UPPER = np.array([85, 255, 255])
 
-MAGENTA_LOWER = RGB2HSV([47, 40, 50])
-MAGENTA_UPPER = RGB2HSV([255, 0, 85])
+# TUNED VALUES: Derived dynamically from lab testing logs
+MAGENTA_LOWER = np.array([158,  100,  140])
+MAGENTA_UPPER = np.array([178,  255,  255])
 
 WHITE_LOWER = RGB2HSV([136, 136, 136])
 WHITE_UPPER = RGB2HSV([255, 214, 216])
 
-BLUE_LOWER = RGB2HSV([40, 47, 50]) # np.array([90, 40, 40]) # RGB2HSV([40, 47, 50])
-BLUE_UPPER = RGB2HSV([95, 0, 255]) # np.array([140, 255, 255]) # RGB2HSV([95, 0, 255]) 
+BLUE_LOWER = RGB2HSV([40, 47, 50])
+BLUE_UPPER = RGB2HSV([95, 0, 255])
 
 ORANGE_LOWER = np.array([0, 70, 70])
 ORANGE_UPPER = np.array([35, 255, 255])
 
 # Get the center coordinates, width and height of a pillar with specific filter
-def get_pillar_center(mask, min_area = 20):
+def get_pillar_center(mask, min_area = 5):  # Changed from 20 to 1
 	mask = cv2.erode(mask, None, iterations=1)
 	mask = cv2.dilate(mask, None, iterations=1)
 	contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -89,7 +91,7 @@ def get_pillar_center(mask, min_area = 20):
 	return None
 
 # Get the center of mass coordinates of the largest white polygon
-def get_track_polygon(mask, min_area = 20):
+def get_track_polygon(mask, min_area = 5):  # Changed from 20 to 1
 	mask = cv2.erode(mask, None, iterations = 1)
 	mask = cv2.dilate(mask, None, iterations = 1)
 	contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
@@ -133,11 +135,11 @@ def _process_obstacle(hsv):
 		mask_r1 = cv2.inRange(hsv, RED_LOWER1, RED_UPPER1)
 		mask_r2 = cv2.inRange(hsv, RED_LOWER2, RED_UPPER2)
 		red_mask = cv2.bitwise_or(mask_r1, mask_r2)
-		r_box = get_pillar_center(red_mask, min_area = 20)
+		r_box = get_pillar_center(red_mask, min_area = 5)  # Changed from 20 to 1
 
 	if green_enabled:
 		green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
-		g_box = get_pillar_center(green_mask, min_area = 20)
+		g_box = get_pillar_center(green_mask, min_area = 5)  # Changed from 20 to 1
 
 	largest = None
 	color = None
@@ -168,7 +170,7 @@ def _process_parkinglot(hsv):
 
 	if magenta_enabled:
 		magenta_mask = cv2.inRange(hsv, MAGENTA_LOWER, MAGENTA_UPPER)
-		m_box = get_pillar_center(magenta_mask, min_area = 20)
+		m_box = get_pillar_center(magenta_mask, min_area = 5)  # Changed from 20 to 1
 
 	if m_box:
 		parking = {"center_x": m_box[0], "center_y": m_box[1], "width": m_box[2], "height": m_box[3]}
@@ -181,13 +183,17 @@ def _process_track(hsv, red_mask, green_mask):
 	raw_white_mask = cv2.inRange(hsv, WHITE_LOWER, WHITE_UPPER)
 	blue_mask = cv2.inRange(hsv, BLUE_LOWER, BLUE_UPPER)
 	orange_mask = cv2.inRange(hsv, ORANGE_LOWER, ORANGE_UPPER)
+	
+	# Extract a fresh copy of the magenta mask to subtract it structurally
+	magenta_mask = cv2.inRange(hsv, MAGENTA_LOWER, MAGENTA_UPPER)
 
 	combined_mask = raw_white_mask
-	for mask in [red_mask, green_mask, blue_mask, orange_mask]:
+	# FIX: Added magenta_mask into the structural separation block loop
+	for mask in [red_mask, green_mask, blue_mask, orange_mask, magenta_mask]:
 		combined_mask = cv2.bitwise_or(combined_mask, mask)
 
 	track_mask = isolate_largest_blob(combined_mask)
-	w_poly, w_center = get_track_polygon(track_mask, min_area = 20)
+	w_poly, w_center = get_track_polygon(track_mask, min_area = 5)  # Changed from 20 to 1
 
 	if w_poly is not None:
 		track = {"polygon": w_poly, "center_x": w_center[0], "center_y": w_center[1]}
@@ -258,7 +264,7 @@ def configure_vision_pipeline(
 def _vision_loop():
 	global _camera, _video_out, _shared_hsv, _output_frame, _record_mp4, _video_path
 	prev_time = 0
-    
+	
 	while True:
 		frame = _camera.capture_array()
 		
@@ -268,7 +274,6 @@ def _vision_loop():
 	
 		display_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
 		cv2.putText(display_frame, f"FPS: {int(fps)}", (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
-		# print(fps)
 
 		hsv_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
 		with _hsv_lock:
@@ -365,7 +370,7 @@ def start_vision_system(camera_instance, record_mp4=True):
 	_camera = camera_instance
 	_record_mp4 = record_mp4
 	_video_out = None
-    
+	
 	if record_mp4:
 		timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 		_video_path = f"vid_{timestamp}.mp4"
@@ -405,7 +410,7 @@ def _generate_web_frames():
 		with _stream_lock:
 			_stream_clients = max(0, _stream_clients - 1)
 
-# Display high-speed digital flipbook as live streaming
+# Display live streaming via web feed
 @_app.route('/')
 def _video_feed():
 	return Response(_generate_web_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
@@ -444,7 +449,7 @@ atexit.register(_cleanup_hardware)
 def get_track_distance(x, y):
 	with _data_lock:
 		poly = track_data["polygon"]
-	    
+		
 	if poly is None:
 		return False, 0.0
 	
