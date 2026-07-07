@@ -60,8 +60,10 @@ RED_UPPER2 = RGB2HSV([255, 0, 4])
 GREEN_LOWER = RGB2HSV([94, 99, 69])
 GREEN_UPPER = RGB2HSV([0, 255, 255])
 
-MAGENTA_LOWER = RGB2HSV([47, 40, 50])
-MAGENTA_UPPER = RGB2HSV([255, 0, 85])
+MAGENTA_LOWER = np.array([158, 100, 140])
+MAGENTA_UPPER = np.array([178, 255, 255])
+# MAGENTA_LOWER = RGB2HSV([47, 40, 50])
+# MAGENTA_UPPER = RGB2HSV([255, 0, 85])
 
 WHITE_LOWER = RGB2HSV([136, 136, 136])
 WHITE_UPPER = RGB2HSV([255, 214, 216])
@@ -80,7 +82,7 @@ def get_pillar_center(mask, min_area = 20):
 	if contours:
 		largest_contour = max(contours, key=cv2.contourArea)
 		area = cv2.contourArea(largest_contour)
-		area = area // 100
+		area = area // 10
 		if area > min_area:
 			x, y, w, h = cv2.boundingRect(largest_contour)
 			center_x = x + (w // 2)
@@ -133,16 +135,16 @@ def _process_obstacle(hsv):
 		mask_r1 = cv2.inRange(hsv, RED_LOWER1, RED_UPPER1)
 		mask_r2 = cv2.inRange(hsv, RED_LOWER2, RED_UPPER2)
 		red_mask = cv2.bitwise_or(mask_r1, mask_r2)
-		r_box = get_pillar_center(red_mask, min_area = 20)
+		r_box = get_pillar_center(red_mask, min_area = 30)
 
 	if green_enabled:
 		green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
-		g_box = get_pillar_center(green_mask, min_area = 20)
+		g_box = get_pillar_center(green_mask, min_area = 30)
 
 	largest = None
 	color = None
-	r_area = (r_box[2] * r_box[3]) // 100 if r_box else 0
-	g_area = (g_box[2] * g_box[3]) // 100 if g_box else 0
+	r_area = (r_box[2] * r_box[3]) // 10 if r_box else 0
+	g_area = (g_box[2] * g_box[3]) // 10 if g_box else 0
 
 	if r_area > 0 or g_area > 0:
 		if r_area > g_area:
@@ -168,7 +170,7 @@ def _process_parkinglot(hsv):
 
 	if magenta_enabled:
 		magenta_mask = cv2.inRange(hsv, MAGENTA_LOWER, MAGENTA_UPPER)
-		m_box = get_pillar_center(magenta_mask, min_area = 20)
+		m_box = get_pillar_center(magenta_mask, min_area = 10)
 
 	if m_box:
 		parking = {"center_x": m_box[0], "center_y": m_box[1], "width": m_box[2], "height": m_box[3]}
@@ -312,7 +314,7 @@ def _vision_loop():
 				tl_x, tl_y = int(x - w/2), int(y - h/2)
 				c = (0, 0, 255) if obs["color"] == "RED" else (0, 255, 0)
 				cv2.rectangle(display_frame, (tl_x, tl_y), (tl_x+w, tl_y+h), c, 2)
-				cv2.putText(display_frame, f"{obs['color']} ({x}, {y}), A: {w * h // 100}", (tl_x, tl_y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c, 2)
+				cv2.putText(display_frame, f"{obs['color']} ({x}, {y}), A: {w * h // 10}", (tl_x, tl_y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c, 2)
 
 			if mag["center_x"] != 0:
 				x, y, w, h = mag["center_x"], mag["center_y"], mag["width"], mag["height"]
@@ -491,6 +493,13 @@ if __name__ == "__main__":
 	try:
 		while True:
 			obstacle, parking, track = get_latest_data()
+			time.sleep(2)
+			print("Current Mag Lower HSV = {}\n".format(MAGENTA_LOWER[:3]))
+			print("Current Mag Upper HSV = {}".format(MAGENTA_UPPER[:3]))
+			new_mag_lower = [int(x) for x in input("Magenta lower: ").split()]
+			new_mag_upper = [int(x) for x in input("Magenta upper: ").split()]
+			MAGENTA_LOWER = RGB2HSV(new_mag_lower)
+			MAGENTA_UPPER = RGB2HSV(new_mag_upper)
 			if obstacle["color"] == "RED":
 				pass
 			elif track["center_x"] != 0:
