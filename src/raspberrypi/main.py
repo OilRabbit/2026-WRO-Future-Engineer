@@ -41,6 +41,7 @@ recorded_time = 0
 
 #Checkpoints (default as clockwise case)
 angle = 0 #steering percentage
+speed = 0
 turn_flag = 0
 turn_indi_1 = [320, 140] #check when to turn
 turn_indi_2 = [320, 170] #check when to turn
@@ -101,15 +102,17 @@ try:
 				num_of_turn = 0
 				is_clockwise = True
 				turning_point = right_turning_point
+				state = States.FIRST_SECTOR
+			if run_OC2:
+				angle = 0
+				speed = 0
+				is_clockwise = True
 				lot_count = 0
 				lot_count_flag = 1
 				pillar_count = 0
 				pillar_count_flag = 1
-				state = States.FIRST_SECTOR
 				OC2_state = OC2_States.LEAVE
-				print("leave")
-			if run_OC2:
-				angle = 0
+				print("leave") 
 			# End of reset #
 			reset_OC = False
 			print("Resetted")
@@ -117,7 +120,7 @@ try:
 			continue
 			
 		# TODO: add timer
-		elif run_OC2:
+		elif run_OC1:
 			esp.send_command("OC1")
 			start_time = time.perf_counter()
 			while run_OC1:
@@ -282,9 +285,9 @@ try:
 				# End of OC1 FSM #
 				time.sleep(0.005)
 				
-		elif run_OC1:
+		elif run_OC2:
 			esp.send_command("OC2")
-			while run_OC1:
+			while run_OC2:
 				reply = esp_replyNprint()
 				if reply == "EOC2":
 					run_OC2 = False
@@ -308,16 +311,16 @@ try:
 				elif (pillar_count - 2) > pillar_count_temp:
 					lot_count_flag = 1
 				
-				if lot_count == 4 and pillar_count % 3 == 0:
+				if lot_count == 4 and pillar_count % 3 == 0 and lot["center_y"] > 270:
 					OC2_state = OC2_States.ENTER
 
 				if OC2_state == OC2_States.LEAVE:
 					if track["center_x"] < 320:
-						is_clockwise = False
-					esp.send_command("6, " + str(is_clockwise * 200 - 100) + ", -1, turn")
+						is_clockwise = False						
+					esp.send_command("8, " + str(is_clockwise * 200 - 100) + ", -1, turn")
 					time.sleep(1.5)
-					esp.send_command("-6, " + str(is_clockwise * -200 + 100) + ", -1, turn")
-					time.sleep(0.5)
+					esp.send_command("-8, " + str(is_clockwise * -100 + 50) + ", -1, turn")
+					time.sleep(0.7)
 					#esp.send_command("6, " + str(is_clockwise * 200 - 100) + ", -1, turn")
 					#time.sleep(0.75)
 					#esp.send_command("-6, " + str(is_clockwise * -200 + 100) + ", -1, turn")
@@ -336,7 +339,11 @@ try:
 						print("pillar")
 						continue
 					angle = (track["center_x"] - 340 + is_clockwise * 40) / 0.3
-					esp.send_command("9, " + str(angle) + ", -1, move")
+					if angle > 80:
+						speed = 9
+					else:
+						speed = 8
+					esp.send_command(str(speed) + ", " + str(angle) + ", -1, move")
 					continue
 
 				if OC2_state == OC2_States.PILLAR:
@@ -344,20 +351,24 @@ try:
 						OC2_state = OC2_States.WHITE
 						print("white")
 						continue
-					angle = (pillar["center_x"] * 2 + ((pillar["color"] == "RED") * 2 - 1) * pillar["center_y"] - 660) / 1.8
-					esp.send_command("9, " + str(angle) + ", -1, move")
-					if pillar["center_y"] > 320:
+					angle = (pillar["center_x"] * 2 + ((pillar["color"] == "RED") * 2 - 1) * pillar["center_y"] - 620 - (pillar["color"] == "GREEN") * 50) / 1.8
+					if angle > 80:
+						speed = 9
+					else:
+						speed = 8
+					esp.send_command(str(speed) + ", " + str(angle) + ", -1, move")
+					if pillar["center_y"] > 270:
 						if pillar_count_flag:
 							pillar_count += 1
 							print("pillar " + str(pillar_count))
 							pillar_count_flag = 0
-					else:
+					elif pillar["center_y"] < 250:
 						pillar_count_flag = 1
 					continue
 				
 				if OC2_state == OC2_States.ENTER:
 					esp.send_command("0, 0, 0, stop")
-					run_OC1 = 0
+					run_OC2 = 0
 					break
 
 				# End of OC2 FSM #

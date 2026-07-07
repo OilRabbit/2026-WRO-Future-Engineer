@@ -44,8 +44,8 @@ RED_UPPER1 = RGB2HSV([12, 255, 255])
 RED_LOWER2 = RGB2HSV([41, 25, 30])
 RED_UPPER2 = RGB2HSV([255, 0, 4])
 
-GREEN_LOWER = RGB2HSV([94, 99, 69])
-GREEN_UPPER = RGB2HSV([0, 255, 255])
+GREEN_LOWER = np.array([40, 60, 50]) #RGB2HSV([94, 99, 69])
+GREEN_UPPER = np.array([85, 255, 255]) #RGB2HSV([0, 255, 255])
 
 MAGENTA_LOWER = RGB2HSV([47, 40, 50])
 MAGENTA_UPPER = RGB2HSV([255, 0, 85])
@@ -120,8 +120,8 @@ def _scan_obstacle_thread():
 		red_mask = cv2.bitwise_or(mask_r1, mask_r2)
 		green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
 		
-		r_box = get_pillar_center(red_mask, min_area = 5)
-		g_box = get_pillar_center(green_mask, min_area = 5)
+		r_box = get_pillar_center(red_mask, min_area = 3)
+		g_box = get_pillar_center(green_mask, min_area = 3)
 		
 		largest = None
 		color = None
