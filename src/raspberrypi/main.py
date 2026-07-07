@@ -51,6 +51,7 @@ lot_count = 0
 lot_count_flag = 1
 pillar_count = 0
 pillar_count_flag = 1
+pillar_count_temp = 0
 
 front_turning_point = [320, 70]
 left_turning_point = [40, 200] #check direction
@@ -289,7 +290,7 @@ try:
 					run_OC2 = False
 					break
 				pillar, lot, track = get_latest_data()
-				time.sleep(0.01)
+				time.sleep(0.025)
 
 				# OC2 FSM #
 				#left = [240, 120] 
@@ -297,11 +298,11 @@ try:
 				#while 1:
 					#dl = get_track_distance(left[0], left[1])[1]
 					#dr = get_track_distance(right[0], right[1])[1]
-					#esp.send_command(str((dl + dr >= 0) * 16 - 8) + ", " +  str(dl + dr))
+					#esp.send_command(str((dl + dr >= 0) * 16 - 8) + ", " + str(dl + dr) + ", -1, move")
 				if lot["center_x"] > 0:
 					if lot_count_flag:
 						lot_count += 1
-						print("lot " + lot_count)
+						print("lot " + str(lot_count))
 						lot_count_flag = 0
 						pillar_count_temp = pillar_count
 				elif (pillar_count - 2) > pillar_count_temp:
@@ -313,8 +314,18 @@ try:
 				if OC2_state == OC2_States.LEAVE:
 					if track["center_x"] < 320:
 						is_clockwise = False
-					esp.send_command("8, " + str(is_clockwise * 200 - 100) + ", -1, turn")
-					sleep(1)
+					esp.send_command("6, " + str(is_clockwise * 200 - 100) + ", -1, turn")
+					time.sleep(1.5)
+					esp.send_command("-6, " + str(is_clockwise * -200 + 100) + ", -1, turn")
+					time.sleep(0.5)
+					#esp.send_command("6, " + str(is_clockwise * 200 - 100) + ", -1, turn")
+					#time.sleep(0.75)
+					#esp.send_command("-6, " + str(is_clockwise * -200 + 100) + ", -1, turn")
+					#time.sleep(0.75)
+					#esp.send_command("6, " + str(is_clockwise * 200 - 100) + ", -1, turn")
+					#time.sleep(0.75)
+					#esp.send_command("-6, " + str(is_clockwise * -200 + 100) + ", -1, turn")
+					#time.sleep(0.75)
 					OC2_state = OC2_States.WHITE
 					print("white")
 					continue
@@ -324,8 +335,8 @@ try:
 						OC2_state = OC2_States.PILLAR
 						print("pillar")
 						continue
-					angle = (track["center_x"] - 320) / 0.3
-					esp.send_command("8, " + str(angle) + ", -1, move")
+					angle = (track["center_x"] - 340 + is_clockwise * 40) / 0.3
+					esp.send_command("9, " + str(angle) + ", -1, move")
 					continue
 
 				if OC2_state == OC2_States.PILLAR:
@@ -334,11 +345,11 @@ try:
 						print("white")
 						continue
 					angle = (pillar["center_x"] * 2 + ((pillar["color"] == "RED") * 2 - 1) * pillar["center_y"] - 660) / 1.8
-					esp.send_command("8, " + str(angle) + ", -1, move")
+					esp.send_command("9, " + str(angle) + ", -1, move")
 					if pillar["center_y"] > 320:
 						if pillar_count_flag:
 							pillar_count += 1
-							print("pillar " + pillar_count)
+							print("pillar " + str(pillar_count))
 							pillar_count_flag = 0
 					else:
 						pillar_count_flag = 1

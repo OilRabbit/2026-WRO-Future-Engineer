@@ -39,8 +39,8 @@ def RGB2HSV(rgb_list):
 	v = c_max * 255
 	return np.array([h, s, v])
 
-RED_LOWER1 = RGB2HSV([140, 50, 50])
-RED_UPPER1 = RGB2HSV([255, 95, 95])
+RED_LOWER1 = RGB2HSV([0, 80, 80])
+RED_UPPER1 = RGB2HSV([12, 255, 255])
 RED_LOWER2 = RGB2HSV([41, 25, 30])
 RED_UPPER2 = RGB2HSV([255, 0, 4])
 
