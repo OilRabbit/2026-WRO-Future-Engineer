@@ -114,7 +114,6 @@ void OC1_program() {
         last_done_msg_time = millis();
         distance_done_sent = true;
       }
-    }
       // Important:
       // Do NOT clear active_distance_cmd here.
       // Keeping it prevents the same old command from restarting.
