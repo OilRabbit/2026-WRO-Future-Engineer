@@ -132,66 +132,73 @@ void OC2_program() {
   }
 
   else if (cmd.length() > 0 && cmd != "OC2") {
-    if (cmd == active_distance_cmd) {
-      if (!is_moving_distance && distance_done_sent) {
-        if (millis() - last_done_msg_time > 200) {
-          send_msg("Done Target");
-          last_done_msg_time = millis();
-        }
+    int firstComma = cmd.indexOf(',');
+    int secondComma = cmd.indexOf(',', firstComma + 1);
+    int thirdComma = cmd.indexOf(',', secondComma + 1);
+
+    if (firstComma != -1 && secondComma != -1 && thirdComma != -1) {
+      String speedStr = cmd.substring(0, firstComma);
+      String steeringStr = cmd.substring(firstComma + 1, secondComma);
+      String distanceStr = cmd.substring(secondComma + 1, thirdComma);
+      String modeStr = cmd.substring(thirdComma + 1);
+
+      speedStr.trim();
+      steeringStr.trim();
+      distanceStr.trim();
+      modeStr.trim();
+
+      if (modeStr == "P") {
+        MAX_STEERING_ANGLE = 27;
+      } else {
+        MAX_STEERING_ANGLE = 24;
       }
-    }
 
-    else {
-      int firstComma = cmd.indexOf(',');
-      int secondComma = cmd.indexOf(',', firstComma + 1);
-      int thirdComma = cmd.indexOf(',', secondComma + 1);
+      if (modeStr == "R") {
+        reset_encoder();
+        previous_target_distance = -1;
+      }
 
-      if (firstComma != -1 && secondComma != -1 && thirdComma != -1) {
-        String speedStr = cmd.substring(0, firstComma);
-        String steeringStr = cmd.substring(firstComma + 1, secondComma);
-        String distanceStr = cmd.substring(secondComma + 1, thirdComma);
-        String modeStr = cmd.substring(thirdComma + 1);
+      current_target_speed = speedStr.toInt();
+      current_target_steering = steeringStr.toInt();
+      current_target_distance = distanceStr.toInt();
 
-        speedStr.trim();
-        steeringStr.trim();
-        distanceStr.trim();
-        modeStr.trim();
-
-        if (modeStr == "P") {
-          MAX_STEERING_ANGLE = 27;
+      if (current_target_distance > 0) {
+        if (cmd == active_distance_cmd) {
+          if (!is_moving_distance && distance_done_sent) {
+            if (millis() - last_done_msg_time > 200) {
+              send_msg("Done Target");
+              last_done_msg_time = millis();
+            }
+          }
         } else {
-          MAX_STEERING_ANGLE = 24;
-        }
-
-        if (modeStr == "R") {
-          reset_encoder();
-          previous_target_distance = -1;
-        }
-
-        current_target_speed = speedStr.toInt();
-        current_target_steering = steeringStr.toInt();
-        current_target_distance = distanceStr.toInt();
-
-        if (current_target_distance > 0 && previous_target_distance != current_target_distance) {
           reset_encoder();
           is_moving_distance = true;
           distance_done_sent = false;
           active_distance_cmd = cmd;
           previous_target_distance = current_target_distance;
-        } else {
-          is_moving_distance = false;
-          current_target_speed = 0;
-          current_target_steering = 0;
-          current_target_distance = -1;
-          active_distance_cmd = "";
-          distance_done_sent = false;
-          motor_move(0);
         }
-
       } else {
-        send_msg("X");
+        is_moving_distance = false;
+        current_target_distance = -1;
+        active_distance_cmd = "";
+        distance_done_sent = false;
       }
+
+    } else {
+      send_msg("X");
     }
+  }
+
+  if (!run_OC2) {
+    current_target_speed = 0;
+    current_target_steering = 0;
+    current_target_distance = -1;
+    is_moving_distance = false;
+    active_distance_cmd = "";
+    distance_done_sent = false;
+    motor_move(0);
+    steering_percentage = 0;
+    return;
   }
 
   steering_percentage = current_target_steering;
