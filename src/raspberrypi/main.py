@@ -286,7 +286,7 @@ try:
                                 add_marker_point("Clockwise Indicator", clockwise_indicator[0], clockwise_indicator[1], color=(0, 0, 255), radius=2, label="C Indi")
                                 anticlockwise_indicator = [5, 100]
                                 add_marker_point("Anticlockwise Indicator", anticlockwise_indicator[0], anticlockwise_indicator[1], color=(0, 0, 255), radius=2, label="AntiC Indi")
-
+                                esp.send_command("0, 0, 0, R")
                                 print("Reset Complete. state = FIRST_SECTOR")
                         reset_OC = False
                         continue
