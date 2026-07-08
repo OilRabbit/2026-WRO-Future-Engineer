@@ -312,42 +312,32 @@ try:
                                 	last_state = state
 
                                 if state == States.FIRST_SECTOR:
-                                	if run_target_sent == False:
-                                		esp.send_command(str(speed) + ", 0, 50, forward target")
-                                		run_target_sent = True
-                                	if reply != "Done Target":
-                                		time.sleep(0.001)
+                                	esp.send_command(str(speed) + ", 0, -1, forward")
+                                	if get_track_distance(front_point[0], front_point[1])[0] == False and (get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True or get_track_distance(right_turning_point[0], right_turning_point[1])[0] == True):
+                                		if num_of_turn == 0:
+                                			if get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]:
+                                				is_clockwise = True
+                                				# front_point = [140, 80]
+                                				remove_marker("Anticlockwise Indicator")
+                                				innerwall_white = [335, 220]
+                                				innerwall_black = [365, 220]
+                                			else:
+                                				is_clockwise = False
+                                				# front_point = [260, 80]
+                                				remove_marker("Clockwise Indicator")
+                                				innerwall_white = [65, 220]
+                                				innerwall_black = [35, 220]
+                                			add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
+                                			add_marker_point("Innerwall White", innerwall_white[0], innerwall_white[1], color=(0, 0, 255), radius=3, label="Danger")
+                                			add_marker_point("Innerwall Black", innerwall_black[0], innerwall_black[1], color=(255, 0, 0), radius=3, label="Safe")
+                                			is_clockwise = get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]
+                                			previous_wall_error = 0.0
+                                		start_turning_time = time.perf_counter_ns()
+                                		state = States.TURNING_STATE
                                 		continue
                                 	else:
-                                		state = States.INIT
-                                		run_target_sent = False
-                                		break
-                                	# esp.send_command(str(speed) + ", 0, -1, forward")
-                                	# if get_track_distance(front_point[0], front_point[1])[0] == False and (get_track_distance(left_turning_point[0], left_turning_point[1])[0] == True or get_track_distance(right_turning_point[0], right_turning_point[1])[0] == True):
-                                	# 	if num_of_turn == 0:
-                                	# 		if get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]:
-                                	# 			is_clockwise = True
-                                	# 			# front_point = [140, 80]
-                                	# 			remove_marker("Anticlockwise Indicator")
-                                	# 			innerwall_white = [335, 220]
-                                	# 			innerwall_black = [365, 220]
-                                	# 		else:
-                                	# 			is_clockwise = False
-                                	# 			# front_point = [260, 80]
-                                	# 			remove_marker("Clockwise Indicator")
-                                	# 			innerwall_white = [65, 220]
-                                	# 			innerwall_black = [35, 220]
-                                	# 		add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
-                                	# 		add_marker_point("Innerwall White", innerwall_white[0], innerwall_white[1], color=(0, 0, 255), radius=3, label="Danger")
-                                	# 		add_marker_point("Innerwall Black", innerwall_black[0], innerwall_black[1], color=(255, 0, 0), radius=3, label="Safe")
-                                	# 		is_clockwise = get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]
-                                	# 		previous_wall_error = 0.0
-                                	# 	start_turning_time = time.perf_counter_ns()
-                                	# 	state = States.TURNING_STATE
-                                	# 	continue
-                                	# else:
-                                        # 	time.sleep(0.001)
-                                        # 	continue
+                                        	time.sleep(0.001)
+                                        	continue
 
                                 # Turn
                                 elif state == States.TURNING_STATE:
