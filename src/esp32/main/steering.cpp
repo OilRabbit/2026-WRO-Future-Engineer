@@ -2,6 +2,7 @@
 
 /* Global variable for storing the steering angle percentage (-100% ~ 100%) */
 float steering_percentage;
+volatile int MAX_STEERING_ANGLE = 24;
 
 Servo steering_motor;
 

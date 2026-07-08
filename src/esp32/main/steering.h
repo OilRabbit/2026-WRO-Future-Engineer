@@ -7,7 +7,7 @@
 
 #define SERVO_PIN 4
 
-#define MAX_STEERING_ANGLE 24
+extern volatile int MAX_STEERING_ANGLE;
 
 // Clockwise is +ve
 extern float steering_percentage; 
