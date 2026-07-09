@@ -49,7 +49,6 @@ end_time = 0
 recorded_time = 0
 
 run_target_sent = False
-target_done = False
 
 PURPLE_TARGET_X = 490
 PURPLE_ALIGN_SPEED = 7.5
@@ -135,13 +134,15 @@ lost_tracking_start_time = None  # Stores the timestamp when Wall 2 is lost
 try:
     print("IDLE")
     while True:
+        # Flush serial buffer from MCU constantly
+        esp_replyNprint()
+
         if reset_OC:
             if run_OC1:
                 print("[INIT] Starting Objective Challenge 1 Stage...")
                 oc1_parking_state = ParkingStates.ALIGNING
                 wall_count = 0
                 lost_tracking_start_time = None
-                target_done = False
 
             if run_OC2:
                 angle = 0
@@ -168,8 +169,6 @@ try:
                 print("EOC1")
                 run_OC1 = False
                 break
-            if reply == "Done Target":
-                target_done = True
             _, _, track = get_latest_data()
             print("States = {}".format(oc1_parking_state))
             if oc1_parking_state == ParkingStates.ALIGNING:
@@ -197,8 +196,8 @@ try:
                             send_command_logged("0, 0, 0, R")
                             print(f"\n[🛑 WALL 2 DETECTED] Area {purple_area} >= {PURPLE_STOP_THRESHOLD}. Initiating parallel parking adjustment...")
                             oc1_parking_state = ParkingStates.MOVE_FORWARD
+                            reply = "NA"
                             maneuver_start_time = time.time()
-                            target_done = False
                             continue
                     else:
                         error = purple_x - PURPLE_TARGET_X
@@ -229,7 +228,6 @@ try:
                                 # Elevate state immediately to step 1 of parking maneuvers
                                 oc1_parking_state = ParkingStates.MOVE_FORWARD
                                 maneuver_start_time = time.time()
-                                target_done = False
                     else:
                         print(" -> [SEARCHING] Wall 1 dropped out of tracking frame.")
 
@@ -251,12 +249,10 @@ try:
             # ==================================================================
             elif oc1_parking_state == ParkingStates.MOVE_FORWARD:
                 print("hiiiii")
-                if run_target_sent == False:
-                    send_command_logged("8, 0, 10, forward target")
-                    run_target_sent = True
-                    target_done = False
+                send_command_logged("8, 0, 10, forward target")
+                run_target_sent = True
 
-                if not target_done:
+                if reply != "Done Target":
                     time.sleep(0.001)
                     continue
 
@@ -266,7 +262,6 @@ try:
                     oc1_parking_state = ParkingStates.BACKWARD_TURN_1
                     maneuver_start_time = time.time()
                     run_target_sent = False
-                    target_done = False
                     send_command_logged("0, 0, 0, R")
                     continue
 
@@ -274,13 +269,11 @@ try:
             # STEP 2: BACKWARD TURN 1
             # ==================================================================
             elif oc1_parking_state == ParkingStates.BACKWARD_TURN_1:
-                if run_target_sent == False:
-                    steer = -95 if is_clockwise else 95
-                    send_command_logged(f"-8, {steer}, 10, forward target")
-                    run_target_sent = True
-                    target_done = False
+                steer = -95 if is_clockwise else 95
+                send_command_logged(f"-8, {steer}, 10, forward target")
+                run_target_sent = True
 
-                if not target_done:
+                if reply != "Done Target":
                     time.sleep(0.001)
                     continue
 
@@ -290,7 +283,6 @@ try:
                     oc1_parking_state = ParkingStates.BACKWARD_STRAIGHT
                     maneuver_start_time = time.time()
                     run_target_sent = False
-                    target_done = False
                     send_command_logged("0, 0, 0, R")
                     continue
 
@@ -298,12 +290,10 @@ try:
             # STEP 2b: NEW - STRAIGHT BACKWARD OVERRIDE (DEEPING INTO POSITION)
             # ==================================================================
             elif oc1_parking_state == ParkingStates.BACKWARD_STRAIGHT:
-                if run_target_sent == False:
-                    send_command_logged("-8, 0, 10, forward target")
-                    run_target_sent = True
-                    target_done = False
+                send_command_logged("-8, 0, 10, forward target")
+                run_target_sent = True
 
-                if not target_done:
+                if reply != "Done Target":
                     time.sleep(0.001)
                     continue
 
@@ -313,7 +303,6 @@ try:
                     oc1_parking_state = ParkingStates.BACKWARD_TURN_2
                     maneuver_start_time = time.time()
                     run_target_sent = False
-                    target_done = False
                     send_command_logged("0, 0, 0, R")
                     continue
 
@@ -321,13 +310,11 @@ try:
             # STEP 3: BACKWARD TURN 2 (COUNTER-STEER TO PARALLEL)
             # ==================================================================
             elif oc1_parking_state == ParkingStates.BACKWARD_TURN_2:
-                if run_target_sent == False:
-                    steer = -95 if is_clockwise else 95
-                    send_command_logged(f"-8, {steer}, 10, forward target")
-                    run_target_sent = True
-                    target_done = False
+                steer = -95 if is_clockwise else 95
+                send_command_logged(f"-8, {steer}, 10, forward target")
+                run_target_sent = True
 
-                if not target_done:
+                if reply != "Done Target":
                     time.sleep(0.001)
                     continue
 
@@ -336,7 +323,6 @@ try:
                     print("[PARKING] Step 3 finished. Parallel alignment complete.")
                     oc1_parking_state = ParkingStates.COMPLETED
                     run_target_sent = False
-                    target_done = False
                     continue
 
             # ==================================================================
