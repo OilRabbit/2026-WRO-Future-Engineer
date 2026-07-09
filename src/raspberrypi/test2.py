@@ -249,13 +249,11 @@ try:
             # ==================================================================
             elif oc1_parking_state == ParkingStates.MOVE_FORWARD:
                 print("hiiiii")
-                if run_target_sent == False:
-                    send_command_logged("8, 0, 10, forward target")
-                    run_target_sent = True
+                send_command_logged("8, 0, 10, forward target")
+                run_target_sent = True
 
                 if reply != "Done Target":
                     time.sleep(0.001)
-                    # send_command_logged("8, 0, 10, forward target")
                     continue
 
                 else:
@@ -265,16 +263,15 @@ try:
                     maneuver_start_time = time.time()
                     run_target_sent = False
                     send_command_logged("0, 0, 0, R")
-                    break
+                    continue
 
             # ==================================================================
             # STEP 2: BACKWARD TURN 1
             # ==================================================================
             elif oc1_parking_state == ParkingStates.BACKWARD_TURN_1:
-                if run_target_sent == False:
-                    steer = -95 if is_clockwise else 95
-                    send_command_logged(f"-8, {steer}, 10, forward target")
-                    run_target_sent = True
+                steer = -95 if is_clockwise else 95
+                send_command_logged(f"-8, {steer}, 10, forward target")
+                run_target_sent = True
 
                 if reply != "Done Target":
                     time.sleep(0.001)
@@ -286,16 +283,15 @@ try:
                     oc1_parking_state = ParkingStates.BACKWARD_STRAIGHT
                     maneuver_start_time = time.time()
                     run_target_sent = False
-                    sned_command_loggeed("0, 0, 0, R")
-                    break
+                    send_command_logged("0, 0, 0, R")
+                    continue
 
             # ==================================================================
             # STEP 2b: NEW - STRAIGHT BACKWARD OVERRIDE (DEEPING INTO POSITION)
             # ==================================================================
             elif oc1_parking_state == ParkingStates.BACKWARD_STRAIGHT:
-                if run_target_sent == False:
-                    send_command_logged("-8, 0, 10, forward target")
-                    run_target_sent = True
+                send_command_logged("-8, 0, 10, forward target")
+                run_target_sent = True
 
                 if reply != "Done Target":
                     time.sleep(0.001)
@@ -308,16 +304,15 @@ try:
                     maneuver_start_time = time.time()
                     run_target_sent = False
                     send_command_logged("0, 0, 0, R")
-                    break
+                    continue
 
             # ==================================================================
             # STEP 3: BACKWARD TURN 2 (COUNTER-STEER TO PARALLEL)
             # ==================================================================
             elif oc1_parking_state == ParkingStates.BACKWARD_TURN_2:
-                if run_target_sent == False:
-                    steer = -95 if is_clockwise else 95
-                    send_command_logged(f"-8, {steer}, 10, forward target")
-                    run_target_sent = True
+                steer = -95 if is_clockwise else 95
+                send_command_logged(f"-8, {steer}, 10, forward target")
+                run_target_sent = True
 
                 if reply != "Done Target":
                     time.sleep(0.001)
@@ -328,7 +323,7 @@ try:
                     print("[PARKING] Step 3 finished. Parallel alignment complete.")
                     oc1_parking_state = ParkingStates.COMPLETED
                     run_target_sent = False
-                    break
+                    continue
 
             # ==================================================================
             # STEP 4: COMPLETED PARKING MANEUVER
