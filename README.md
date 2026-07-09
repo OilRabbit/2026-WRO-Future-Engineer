@@ -6,7 +6,7 @@
 
 [Documentation](https://github.com/OilRabbit/2026-WRO-Future-Engineer/tree/Gen-1.0/Documentation)
 
-[Vehicle photos](v-photos)
+[Vehicle photos](vehicle_photos)
 
 [Practice Videos](https://github.com/OilRabbit/2026-WRO-Future-Engineer/tree/Gen-1.0/video)
 
