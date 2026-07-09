@@ -52,18 +52,21 @@ def RGB2HSV(rgb_list):
 	v = c_max * 255
 	return np.array([h, s, v])
 
-RED_LOWER1 = RGB2HSV([41, 25 , 25])
-RED_UPPER1 = RGB2HSV([255, 85, 0])
-RED_LOWER2 = RGB2HSV([41, 25, 30])
-RED_UPPER2 = RGB2HSV([255, 0, 4])
+# Format: [H, S, V] Matrix Arrays for OpenCV
+
+RED_LOWER1 = np.array([0,  100,  41])   # From RGB [41, 25, 25]
+RED_UPPER1 = np.array([10, 255, 255])   # From RGB [255, 85, 0]
+
+RED_LOWER2 = np.array([176, 100,  41])  # From RGB [41, 25, 30]
+RED_UPPER2 = np.array([179, 255, 255])  # From RGB [255, 0, 4]
 
 # Expanded to capture both the shadowed side and the bright glare on top
 GREEN_LOWER = np.array([40,  60,  50])
 GREEN_UPPER = np.array([85, 255, 255])
 
 # TUNED VALUES: Derived dynamically from lab testing logs
-MAGENTA_LOWER = np.array([158,  100,  140])
-MAGENTA_UPPER = np.array([178,  255,  255])
+MAGENTA_LOWER = np.array([145,  70,  60])
+MAGENTA_UPPER = np.array([175,  255,  255])
 
 WHITE_LOWER = RGB2HSV([136, 136, 136])
 WHITE_UPPER = RGB2HSV([255, 214, 216])
@@ -464,7 +467,7 @@ if __name__ == "__main__":
 	print("=======Initializing=======")
 	camera = picam2()
 	
-	video_size = (400, 225)
+	video_size = (640, 360)
 	sensor_video_size = (2304, 1296)
 	target_frame_duration_us = 10000
 	
