@@ -53,8 +53,9 @@ def RGB2HSV(rgb_list):
 	return np.array([h, s, v])
 
 # Format: [H, S, V] Matrix Arrays for OpenCV
-RED_LOWER1 = np.array([0, 100, 41])
-RED_UPPER1 = np.array([10, 255, 255])
+
+RED_LOWER1 = np.array([0,  100,  41])   # From RGB [41, 25, 25]
+RED_UPPER1 = np.array([10, 255, 255])   # From RGB [255, 85, 0]
 
 RED_LOWER2 = np.array([176, 100,  41])  # From RGB [41, 25, 30]
 RED_UPPER2 = np.array([179, 255, 255])  # From RGB [255, 0, 4]
@@ -296,6 +297,7 @@ def _vision_loop():
 
 		with _stream_lock:
 			has_stream_clients = _stream_clients > 0
+
 		with _data_lock:
 			config = _vision_config.copy()
 			obs = nearest_obstacle.copy()
@@ -381,8 +383,8 @@ def start_vision_system(camera_instance, record_mp4=True):
 		_video_out = None
 		print("Recording: Not activated")
 
-		threading.Thread(target=_vision_loop, daemon=True).start()
-		print("Vision: Activated")
+	threading.Thread(target=_vision_loop, daemon=True).start()
+	print("Vision: Activated")
 
 # Get the latest data of the nearest obstacle, parking lot, and the track
 def get_latest_data():
