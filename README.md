@@ -20,8 +20,8 @@
 
 Our team consists of seven alumni from Po Leung Kuk Tang Yuk Tien College, each of whom previously served as chairperson of the school’s Robotics Team or has a strong interest in robotics. Over years of competitions and training, we have built strong friendships and developed a shared commitment to robotics. Last year, our team participated in the WRO Singapore final and placed 28th. Although we want to achieve higher this year, two of our teammates cannot participate due to academic reasons. Thus, we have two new teammates this year, Harrison and Donald become part of our supporters this year.
 
-![team_photo](t-photo/team_photo.jpg)
-![team_photo](t-photo/TeamPhoto.jpg)
+![team_photo](team_photos/team2025.jpg)
+![team_photo](team_photos/team2026.jpeg)
 ### Members' Introductions
 
 #### Kyle Cheung (Participant) – Age 18
@@ -59,7 +59,7 @@ However, we found that the PixyCam2.1 feedback is not stable and it was prone to
 
 ## Our current design
 
-![right](v-photos/Right.jpg)
+![right](vehicle_photos/Right.jpeg)
 
 This year, we are trying to measure the field with the camera only. This requires a reliable camera and a powerful processor to observe the field and analyse the graphical data. After researching other teams’ choices on camera, we decided to use the Raspberry Pi and its camera for this task due to the stability and high processing power.
 
