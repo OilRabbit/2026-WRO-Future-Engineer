@@ -52,20 +52,9 @@ def RGB2HSV(rgb_list):
 	v = c_max * 255
 	return np.array([h, s, v])
 
-<<<<<<< HEAD
 # Format: [H, S, V] Matrix Arrays for OpenCV
-
-RED_LOWER1 = np.array([0,  100,  41])   # From RGB [41, 25, 25]
-RED_UPPER1 = np.array([10, 255, 255])   # From RGB [255, 85, 0]
-=======
-RED_LOWER1 = RGB2HSV([0, 80, 80])
-RED_UPPER1 = RGB2HSV([12, 255, 255])
-RED_LOWER2 = RGB2HSV([41, 25, 30])
-RED_UPPER2 = RGB2HSV([255, 0, 4])
-
-GREEN_LOWER = np.array([40, 60, 50]) #RGB2HSV([94, 99, 69])
-GREEN_UPPER = np.array([85, 255, 255]) #RGB2HSV([0, 255, 255])
->>>>>>> 14854120d11683213666a55507ca8feeafb4b4b3
+RED_LOWER1 = np.array([0, 100, 41])
+RED_UPPER1 = np.array([10, 255, 255])
 
 RED_LOWER2 = np.array([176, 100,  41])  # From RGB [41, 25, 30]
 RED_UPPER2 = np.array([179, 255, 255])  # From RGB [255, 0, 4]
@@ -133,7 +122,6 @@ def isolate_largest_blob(mask):
 		cv2.drawContours(clean_mask, [largest_cnt], 0, 255, -1)
 	return clean_mask
 
-<<<<<<< HEAD
 def _process_obstacle(hsv):
 	with _data_lock:
 		red_enabled = _detection_flags["red"]
@@ -215,101 +203,6 @@ def _process_track(hsv, red_mask, green_mask):
 		track = {"polygon": None, "center_x": 0, "center_y": 0}
 
 	return track, track_mask
-=======
-# Thread function for scanning obstacles
-def _scan_obstacle_thread():
-	global _shared_hsv, nearest_obstacle, _display_masks
-	while True:
-		with _hsv_lock:
-			if _shared_hsv is None:
-				time.sleep(0.01)
-				continue
-			hsv = _shared_hsv.copy()
-		    
-		mask_r1 = cv2.inRange(hsv, RED_LOWER1, RED_UPPER1)
-		mask_r2 = cv2.inRange(hsv, RED_LOWER2, RED_UPPER2)
-		red_mask = cv2.bitwise_or(mask_r1, mask_r2)
-		green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
-		
-		r_box = get_pillar_center(red_mask, min_area = 3)
-		g_box = get_pillar_center(green_mask, min_area = 3)
-		
-		largest = None
-		color = None
-		r_area = (r_box[2] * r_box[3]) // 100 if r_box else 0
-		g_area = (g_box[2] * g_box[3]) // 100 if g_box else 0
-		
-		if r_area > 0 or g_area > 0:
-			if r_area > g_area:
-				largest = r_box
-				color = "RED"
-			else:
-				largest = g_box
-				color = "GREEN"
-			
-		with _data_lock:
-			_display_masks["red"] = red_mask
-			_display_masks["green"] = green_mask
-			if largest:
-				nearest_obstacle.update({"color": color, "center_x": largest[0], "center_y": largest[1], "width": largest[2], "height": largest[3]})
-			else:
-				nearest_obstacle["color"] = None
-		time.sleep(0.01)
-
-# Thread function for scanning the parking lot
-def _scan_parkinglot_thread():
-	global _shared_hsv, parkinglot_data, _display_masks
-	while True:
-		with _hsv_lock:
-			if _shared_hsv is None:
-				time.sleep(0.01)
-				continue
-			hsv = _shared_hsv.copy()
-		    
-		magenta_mask = cv2.inRange(hsv, MAGENTA_LOWER, MAGENTA_UPPER)
-		m_box = get_pillar_center(magenta_mask, min_area = 20)
-		with _data_lock:
-			_display_masks["magenta"] = magenta_mask
-			if m_box:
-				parkinglot_data.update({"center_x": m_box[0], "center_y": m_box[1], "width": m_box[2], "height": m_box[3]})
-			else:
-				parkinglot_data["center_x"] = 0
-		time.sleep(0.01)
-
-def _scan_track_thread():
-	global _shared_hsv, track_data, _display_masks
-	while True:
-		with _hsv_lock:
-			if _shared_hsv is None:
-				time.sleep(0.01)
-				continue
-			hsv = _shared_hsv.copy()
-		    
-		raw_white_mask = cv2.inRange(hsv, WHITE_LOWER, WHITE_UPPER)
-		
-		mask_r1 = cv2.inRange(hsv, RED_LOWER1, RED_UPPER1)
-		mask_r2 = cv2.inRange(hsv, RED_LOWER2, RED_UPPER2)
-		red_mask = cv2.bitwise_or(mask_r1, mask_r2)
-		
-		green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
-		blue_mask = cv2.inRange(hsv, BLUE_LOWER, BLUE_UPPER)
-		orange_mask = cv2.inRange(hsv, ORANGE_LOWER, ORANGE_UPPER)
-		
-		combined_mask = raw_white_mask
-		for m in [red_mask, green_mask, blue_mask, orange_mask]:
-			combined_mask = cv2.bitwise_or(combined_mask, m)
-			
-		track_mask = isolate_largest_blob(combined_mask)
-		w_poly, w_center = get_track_polygon(track_mask, min_area = 20)
-		
-		with _data_lock:
-			_display_masks["white"] = track_mask
-			if w_poly is not None:
-				track_data.update({"polygon": w_poly, "center_x": w_center[0], "center_y": w_center[1]})
-			else:
-				track_data["polygon"] = None
-		time.sleep(0.01)
->>>>>>> 14854120d11683213666a55507ca8feeafb4b4b3
 
 def set_marker_point(name, x, y, color=(0, 255, 255), radius=5, thickness=-1, label=None):
 	with _data_lock:
@@ -387,7 +280,6 @@ def _vision_loop():
 		hsv_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2HSV)
 		with _hsv_lock:
 			_shared_hsv = hsv_frame
-<<<<<<< HEAD
 
 		obs, m_red, m_green = _process_obstacle(hsv_frame)
 		mag, m_mag = _process_parkinglot(hsv_frame)
@@ -404,16 +296,11 @@ def _vision_loop():
 
 		with _stream_lock:
 			has_stream_clients = _stream_clients > 0
-
-=======
-	
->>>>>>> 14854120d11683213666a55507ca8feeafb4b4b3
 		with _data_lock:
 			config = _vision_config.copy()
 			obs = nearest_obstacle.copy()
 			mag = parkinglot_data.copy()
 			trk = track_data.copy()
-<<<<<<< HEAD
 			markers = list(_marker_points.values())
 
 		needs_display = (
@@ -469,39 +356,6 @@ def _vision_loop():
 			fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 			output_h, output_w = record_frame.shape[:2]
 			_video_out = cv2.VideoWriter(_video_path, fourcc, 30.0, (output_w, output_h))
-=======
-			m_red = _display_masks["red"] if _display_masks["red"] is not None else empty_mask
-			m_green = _display_masks["green"] if _display_masks["green"] is not None else empty_mask
-			m_mag = _display_masks["magenta"] if _display_masks["magenta"] is not None else empty_mask
-			m_white = _display_masks["white"] if _display_masks["white"] is not None else empty_mask
-	
-		if obs["color"]:
-			x, y, w, h = obs["center_x"], obs["center_y"], obs["width"], obs["height"]
-			tl_x, tl_y = int(x - w/2), int(y - h/2)
-			c = (0, 0, 255) if obs["color"] == "RED" else (0, 255, 0)
-			cv2.rectangle(display_frame, (tl_x, tl_y), (tl_x+w, tl_y+h), c, 2)
-			cv2.putText(display_frame, f"{obs['color']} ({x}, {y}), A: {w * h // 100}", (tl_x, tl_y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, c, 2)
-	
-		if mag["center_x"] != 0:
-			x, y, w, h = mag["center_x"], mag["center_y"], mag["width"], mag["height"]
-			tl_x, tl_y = int(x - w/2), int(y - h/2)
-			cv2.rectangle(display_frame, (tl_x, tl_y), (tl_x+w, tl_y+h), (255, 0, 255), 2)
-			cv2.putText(display_frame, f"Mag ({x}, {y})", (tl_x, tl_y-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
-	
-		if trk["polygon"] is not None:
-			cv2.drawContours(display_frame, [trk["polygon"]], 0, (255, 255, 255), 3)
-			cv2.circle(display_frame, (trk["center_x"], trk["center_y"]), 5, (0, 0, 255), -1)
-			cv2.putText(display_frame, f"TRACK X: {trk['center_x']}", (trk["center_x"]-40, trk["center_y"]-15), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-	
-		s_red = cv2.resize(cv2.cvtColor(m_red, cv2.COLOR_GRAY2BGR), (160, 90))
-		s_grn = cv2.resize(cv2.cvtColor(m_green, cv2.COLOR_GRAY2BGR), (160, 90))
-		s_mag = cv2.resize(cv2.cvtColor(m_mag, cv2.COLOR_GRAY2BGR), (160, 90))
-		s_wht = cv2.resize(cv2.cvtColor(m_white, cv2.COLOR_GRAY2BGR), (160, 90))
-		masks_combined = cv2.hconcat([s_red, s_grn, s_mag, s_wht])
-	
-		final_output = cv2.vconcat([display_frame, masks_combined])
-	
->>>>>>> 14854120d11683213666a55507ca8feeafb4b4b3
 		if _video_out is not None:
 			_video_out.write(record_frame)
 
@@ -527,12 +381,8 @@ def start_vision_system(camera_instance, record_mp4=True):
 		_video_out = None
 		print("Recording: Not activated")
 
-	threading.Thread(target=_scan_obstacle_thread, daemon=True).start()
-	threading.Thread(target=_scan_parkinglot_thread, daemon=True).start()
-	threading.Thread(target=_scan_track_thread, daemon=True).start()
-	
-	threading.Thread(target=_vision_loop, daemon=True).start()
-	print("Vision: Activated")
+		threading.Thread(target=_vision_loop, daemon=True).start()
+		print("Vision: Activated")
 
 # Get the latest data of the nearest obstacle, parking lot, and the track
 def get_latest_data():
