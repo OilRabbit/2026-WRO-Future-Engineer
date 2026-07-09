@@ -4,7 +4,7 @@
 
 [About Our Team](#about-our-team)
 
-[Documentation]([https://github.com/OilRabbit/2026-WRO-Future-Engineer/tree/Gen-1.0/Documentation](https://github.com/OilRabbit/2026-WRO-Future-Engineer/blob/Gen-1.0/Documentation/2026WROFEReport.pdf))
+[Documentation](https://github.com/OilRabbit/2026-WRO-Future-Engineer/blob/Gen-1.0/Documentation/2026WROFEReport.pdf)
 
 [Vehicle photos](vehicle_photos)
 
