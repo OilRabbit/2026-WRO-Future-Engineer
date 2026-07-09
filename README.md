@@ -4,11 +4,11 @@
 
 [About Our Team](#about-our-team)
 
-[Documentation](https://github.com/OilRabbit/2026-WRO-Future-Engineer/tree/Gen-1.0/Documentation)
+[Documentation]([https://github.com/OilRabbit/2026-WRO-Future-Engineer/tree/Gen-1.0/Documentation](https://github.com/OilRabbit/2026-WRO-Future-Engineer/blob/Gen-1.0/Documentation/2026WROFEReport.pdf))
 
 [Vehicle photos](vehicle_photos)
 
-[Practice Videos](https://github.com/OilRabbit/2026-WRO-Future-Engineer/tree/Gen-1.0/video)
+[Practice Videos](https://github.com/OilRabbit/2026-WRO-Future-Engineer/tree/Gen-1.0/video/video.md)
 
 [Our Code](https://github.com/OilRabbit/2026-WRO-Future-Engineer/tree/Gen-1.0/src)
 
