@@ -141,6 +141,7 @@ try:
                 oc1_parking_state = ParkingStates.ALIGNING
                 wall_count = 0
                 lost_tracking_start_time = None
+                run_target_sent = False
                 target_done = False
 
             if run_OC2:
@@ -193,11 +194,13 @@ try:
                             print(f"\n[⚠️ WALL 1 DETECTED] Area {purple_area} >= {PURPLE_STOP_THRESHOLD}. Overriding vision to push forward straight...")
                             oc1_parking_state = ParkingStates.FORWARD_OVERRIDE
                             maneuver_start_time = time.time()
+                            run_target_sent = False
                         else:
                             send_command_logged("0, 0, 0, R")
                             print(f"\n[🛑 WALL 2 DETECTED] Area {purple_area} >= {PURPLE_STOP_THRESHOLD}. Initiating parallel parking adjustment...")
                             oc1_parking_state = ParkingStates.MOVE_FORWARD
                             maneuver_start_time = time.time()
+                            run_target_sent = False
                             target_done = False
                             continue
                     else:
@@ -229,6 +232,7 @@ try:
                                 # Elevate state immediately to step 1 of parking maneuvers
                                 oc1_parking_state = ParkingStates.MOVE_FORWARD
                                 maneuver_start_time = time.time()
+                                run_target_sent = False
                                 target_done = False
                     else:
                         print(" -> [SEARCHING] Wall 1 dropped out of tracking frame.")
