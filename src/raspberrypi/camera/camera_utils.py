@@ -55,7 +55,7 @@ def RGB2HSV(rgb_list):
 # Format: [H, S, V] Matrix Arrays for OpenCV
 
 RED_LOWER1 = np.array([0,  100,  41])   # From RGB [41, 25, 25]
-RED_UPPER1 = np.array([10, 255, 255])   # From RGB [255, 85, 0]
+RED_UPPER1 = np.array([6, 255, 255])   # From RGB [255, 85, 0]
 
 RED_LOWER2 = np.array([176, 100,  41])  # From RGB [41, 25, 30]
 RED_UPPER2 = np.array([179, 255, 255])  # From RGB [255, 0, 4]
@@ -138,11 +138,11 @@ def _process_obstacle(hsv):
 		mask_r1 = cv2.inRange(hsv, RED_LOWER1, RED_UPPER1)
 		mask_r2 = cv2.inRange(hsv, RED_LOWER2, RED_UPPER2)
 		red_mask = cv2.bitwise_or(mask_r1, mask_r2)
-		r_box = get_pillar_center(red_mask, min_area = 5)  # Changed from 20 to 1
+		r_box = get_pillar_center(red_mask, min_area = 2)  # Changed from 20 to 1
 
 	if green_enabled:
 		green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
-		g_box = get_pillar_center(green_mask, min_area = 5)  # Changed from 20 to 1
+		g_box = get_pillar_center(green_mask, min_area = 2)  # Changed from 20 to 1
 
 	largest = None
 	color = None
