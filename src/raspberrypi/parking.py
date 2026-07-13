@@ -65,13 +65,13 @@ run_target_sent = False
 # ==================================================================
 # CONFIGURATION PARAMETERS
 # ==================================================================
-PURPLE_TARGET_X = 470
+PURPLE_TARGET_X = 310
 PURPLE_ALIGN_SPEED = 7.5
-PURPLE_STOP_THRESHOLD = 130
+PURPLE_STOP_THRESHOLD = 61.5
 
-PROBE_Y = 129.5                  # Fixed vertical look-ahead line
-PROBE_LEFT_X = 260             # Inward adjusted left column
-PROBE_RIGHT_X = 300            # Inward adjusted right column
+PROBE_Y = 78                  # Fixed vertical look-ahead line
+PROBE_LEFT_X = 179             # Inward adjusted left column
+PROBE_RIGHT_X = 204            # Inward adjusted right column
 
 # STOPPING CONDITION
 STOP_DISTANCE_THRESHOLD = 1.0  # Stop walking forward when distance to edge < 1
@@ -176,7 +176,7 @@ try:
                     # Fetching probe metrics
                     has_poly_l, dist_left = get_track_distance(PROBE_LEFT_X, PROBE_Y)
                     has_poly_r, dist_right = get_track_distance(PROBE_RIGHT_X, PROBE_Y)
-                    dist_left = dist_left + 1.7
+                    dist_left = dist_left + 0.6
 
                     # Print out precise diagnostics on each iteration loop
                     print(f"[PROBE LEFT  ({PROBE_LEFT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_l)} | Distance to Edge: {dist_left:.2f}")
@@ -210,7 +210,7 @@ try:
                 # ==================================================================
                 elif oc1_parking_state == ParkingStates.BACKWARD:
                     if run_target_sent == False:
-                        send_command_logged(f"-9, 0, 1, forward target")
+                        send_command_logged(f"-8, 0, 1, forward target")
                         run_target_sent = True
                         target_done = False
 
@@ -227,7 +227,7 @@ try:
                 elif oc1_parking_state == ParkingStates.BACKWARD_TURN_1:
                     if run_target_sent == False:
                         steer = -100 if is_clockwise else 100
-                        send_command_logged(f"-9, {steer}, 45, forward target")
+                        send_command_logged(f"-8, {steer}, 53, forward target")
                         run_target_sent = True
                         target_done = False
 
@@ -243,7 +243,7 @@ try:
 
                 elif oc1_parking_state == ParkingStates.BACKWARD_STRAIGHT:
                     if run_target_sent == False:
-                        send_command_logged("-9, 0, 3, forward target")
+                        send_command_logged("-8, 0, 2, forward target")
                         run_target_sent = True
                         target_done = False
 
@@ -260,7 +260,7 @@ try:
                 elif oc1_parking_state == ParkingStates.BACKWARD_TURN_2:
                     if run_target_sent == False:
                         steer = 100 if is_clockwise else -100
-                        send_command_logged(f"-9, {steer}, 55, forward target")
+                        send_command_logged(f"-8, {steer}, 55, forward target")
                         run_target_sent = True
                         target_done = False
 
