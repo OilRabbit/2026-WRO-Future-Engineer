@@ -75,8 +75,8 @@ PROBE_LEFT_X = 179             # Inward adjusted left column
 PROBE_RIGHT_X = 204            # Inward adjusted right column
 FRONT_EDGE_Y_MIN = 62
 FRONT_EDGE_Y_MAX = 95
-TOUCH_POINT_X = 169
-TOUCH_POINT_Y = 83
+TOUCH_POINT_X = 168
+TOUCH_POINT_Y = 86
 
 # STOPPING CONDITION
 STOP_DISTANCE_THRESHOLD = 1.0  # Stop walking forward when distance to edge < 1
