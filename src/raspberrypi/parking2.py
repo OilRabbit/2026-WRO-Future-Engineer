@@ -101,11 +101,16 @@ def send_command_logged(cmd):
         print(f"[SERIAL WRITE FAULT] Failed to transmit packet: {e}")
 
 def esp_replyNprint():
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    reply = esp.read_message()
-    if reply is not None:
-        print(f"{timestamp} ESP: {reply}")
-    return reply
+    try:
+        reply = esp.read_message()
+        if reply is not None:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            print(f"{timestamp} ESP: {reply}")
+            return reply
+    except Exception as e:
+        print(f"\n[SERIAL WARNING] Caught hardware communication glitch: {e}")
+        print("Attempting to bypass frame drop...")
+    return None
 
 oc1_parking_state = ParkingStates.BLACK_WALL_PD_APPROACH
 
