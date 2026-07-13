@@ -72,6 +72,10 @@ PURPLE_STOP_THRESHOLD = 61.5
 PROBE_Y = 79                  # Fixed vertical look-ahead line
 PROBE_LEFT_X = 179             # Inward adjusted left column
 PROBE_RIGHT_X = 204            # Inward adjusted right column
+FRONT_EDGE_Y_MIN = 62
+FRONT_EDGE_Y_MAX = 95
+TOUCH_POINT_X = 191
+TOUCH_POINT_Y = 78
 
 # STOPPING CONDITION
 STOP_DISTANCE_THRESHOLD = 1.0  # Stop walking forward when distance to edge < 1
@@ -79,6 +83,8 @@ STOP_DISTANCE_THRESHOLD = 1.0  # Stop walking forward when distance to edge < 1
 # PD Controller gains for steering alignment
 KP = 18
 KD = 1.2
+KP_ANGLE = 2.8
+KD_ANGLE = 0.9
 
 # Track derivative terms
 last_alignment_error = 0.0
@@ -114,6 +120,29 @@ def esp_replyNprint():
         print(f"\n[SERIAL WARNING] Caught hardware communication glitch: {e}")
         print("Attempting to bypass frame drop...")
     return None
+
+def get_front_edge_angle(track_polygon, y_min=FRONT_EDGE_Y_MIN, y_max=FRONT_EDGE_Y_MAX):
+    if track_polygon is None:
+        return None
+
+    pts = track_polygon.reshape(-1, 2)
+    roi_pts = []
+    for x, y in pts:
+        if y_min <= y <= y_max:
+            roi_pts.append([float(x), float(y)])
+
+    if len(roi_pts) < 5:
+        return None
+
+    roi_pts = np.array(roi_pts, dtype=np.float32)
+    vx, vy, _, _ = cv2.fitLine(roi_pts, cv2.DIST_L2, 0, 0.01, 0.01)
+    angle_deg = math.degrees(math.atan2(float(vy), float(vx)))
+
+    while angle_deg > 90:
+        angle_deg -= 180
+    while angle_deg < -90:
+        angle_deg += 180
+    return angle_deg
 
 oc1_parking_state = ParkingStates.ALIGNING
 maneuver_start_time = 0
@@ -179,17 +208,16 @@ try:
                 # CONTINUOUS PD APPROACH (WHITE EDGE ALIGNMENT FROM Y=80)
                 # ==================================================================
                 elif oc1_parking_state == ParkingStates.BLACK_WALL_PD_APPROACH:
-                    # Fetching probe metrics
-                    has_poly_l, dist_left = get_track_distance(PROBE_LEFT_X, PROBE_Y)
-                    has_poly_r, dist_right = get_track_distance(PROBE_RIGHT_X, PROBE_Y)
-                    dist_left = dist_left + 0.6
+                    _, _, track = get_latest_data()
+                    touch_inside, touch_dist = get_track_distance(TOUCH_POINT_X, TOUCH_POINT_Y)
+                    edge_angle = get_front_edge_angle(track.get("polygon"))
 
-                    # Print out precise diagnostics on each iteration loop
-                    print(f"[PROBE LEFT  ({PROBE_LEFT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_l)} | Distance to Edge: {dist_left:.2f}")
-                    print(f"[PROBE RIGHT ({PROBE_RIGHT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_r)} | Distance to Edge: {dist_right:.2f}")
+                    print(f"[TOUCH POINT ({TOUCH_POINT_X}, {TOUCH_POINT_Y})] Inside Poly: {int(touch_inside)} | Distance to Edge: {touch_dist:.2f}")
+                    if edge_angle is not None:
+                        print(f"[FRONT EDGE ANGLE] {edge_angle:+.2f} deg")
 
-                    # Evaluate arrival stopping trigger (When distance to edge < 1)
-                    if dist_left < STOP_DISTANCE_THRESHOLD or dist_right < STOP_DISTANCE_THRESHOLD:
+                    # Evaluate arrival stopping trigger using one touch point
+                    if touch_dist < STOP_DISTANCE_THRESHOLD:
                         send_command_logged("0, 0, 0, R")
                         print(f"\n[⚓ WALL ARRIVAL MET] Edge distance dropped below {STOP_DISTANCE_THRESHOLD}! Proceeding to backward motions.")
                         time.sleep(1.0) # Settle vehicle momentum before parking actions
@@ -198,18 +226,26 @@ try:
                         target_done = False
                         continue
 
-                    # --- ACTIVE PD STEERING LOOP ---
-                    # Right - Left subtraction fixes the sign inversion to match physical steering
-                    alignment_error = dist_left - dist_right
-                    derivative = alignment_error - last_alignment_error
-
-                    # Proportional-Derivative steering response output calculation
-                    pd_steering = int(clamp((KP * alignment_error) + (KD * derivative), -55, 55))
-                    last_alignment_error = alignment_error
-
-                    # Move forward while adjusting wheels via PD controller
-                    send_command_logged(f"6, {pd_steering}, 0, pd front wall alignment")
-                    print(f"[PD CONTROL] Alignment Error: {alignment_error:+.2f} | Transmitted Steer: {pd_steering}\n")
+                    if edge_angle is not None:
+                        alignment_error = edge_angle
+                        derivative = alignment_error - last_alignment_error
+                        pd_steering = int(clamp(-(KP_ANGLE * alignment_error) - (KD_ANGLE * derivative), -55, 55))
+                        last_alignment_error = alignment_error
+                        send_command_logged(f"6, {pd_steering}, 0, front edge line align")
+                        print(f"[PD CONTROL] Edge Angle Error: {alignment_error:+.2f} deg | Transmitted Steer: {pd_steering}\n")
+                    else:
+                        # Fallback if the edge line cannot be fit reliably
+                        has_poly_l, dist_left = get_track_distance(PROBE_LEFT_X, PROBE_Y)
+                        has_poly_r, dist_right = get_track_distance(PROBE_RIGHT_X, PROBE_Y)
+                        dist_left = dist_left + 0.6
+                        print(f"[FALLBACK PROBE LEFT  ({PROBE_LEFT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_l)} | Distance to Edge: {dist_left:.2f}")
+                        print(f"[FALLBACK PROBE RIGHT ({PROBE_RIGHT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_r)} | Distance to Edge: {dist_right:.2f}")
+                        alignment_error = dist_left - dist_right
+                        derivative = alignment_error - last_alignment_error
+                        pd_steering = int(clamp((KP * alignment_error) + (KD * derivative), -55, 55))
+                        last_alignment_error = alignment_error
+                        send_command_logged(f"6, {pd_steering}, 0, fallback probe align")
+                        print(f"[FALLBACK PD] Alignment Error: {alignment_error:+.2f} | Transmitted Steer: {pd_steering}\n")
 
                 # ==================================================================
                 # PARKING DISPLACEMENT EXECUTION STATES
