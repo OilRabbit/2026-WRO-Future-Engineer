@@ -55,6 +55,7 @@ pillar_count = 0
 pillar_count_flag = 1
 pillar_count_temp = 0
 enter_flag = 0
+last_pillar_color = None
 
 front_turning_point = [320, 70]
 left_turning_point = [40, 200] #check direction
@@ -90,6 +91,227 @@ def esp_replyNprint():
 		print(f"{timestamp} ESP: {reply}")
 	return reply
 
+def send_command_logged(cmd):
+	try:
+		esp.send_command(cmd)
+	except Exception as e:
+		print(f"[SERIAL WRITE FAULT] Failed to transmit packet: {e}")
+
+def clamp(value, minimum, maximum):
+	return max(minimum, min(maximum, value))
+
+def wait_for_target_done(stop_reply="EOC2"):
+	while True:
+		reply = esp_replyNprint()
+		if reply == stop_reply:
+			return False
+		if reply == "Done Target":
+			return True
+		time.sleep(0.001)
+
+def run_parking_red():
+	print("[PARKING] Using parking.py routine (last block RED)")
+	PURPLE_TARGET_X = 470
+	PURPLE_ALIGN_SPEED = 7.5
+	PURPLE_STOP_THRESHOLD = 130
+	PROBE_Y = 129.5
+	PROBE_LEFT_X = 260
+	PROBE_RIGHT_X = 300
+	STOP_DISTANCE_THRESHOLD = 1.0
+	KP = 20
+	KD = 1.2
+	last_alignment_error = 0.0
+	state = "ALIGNING"
+	pause_start = 0.0
+
+	while True:
+		reply = esp_replyNprint()
+		if reply == "EOC2":
+			return False
+
+		if state == "ALIGNING":
+			_, parking, _ = get_latest_data()
+			purple_x = parking.get("center_x", 0)
+			purple_width = parking.get("width", 0)
+			purple_height = parking.get("height", 0)
+			purple_area = (purple_width * purple_height) // 100
+
+			if purple_x != 0 and purple_area > 10:
+				if purple_area >= PURPLE_STOP_THRESHOLD:
+					send_command_logged("0, 0, 0, wall 1 stop")
+					state = "WALL_1_PAUSE"
+					pause_start = time.time()
+				else:
+					error = purple_x - PURPLE_TARGET_X
+					align_steering = int(clamp(error * 1.9, -65, 65))
+					send_command_logged(f"{PURPLE_ALIGN_SPEED}, {align_steering}, 0, purple align")
+			else:
+				send_command_logged("0, 0, 0, tracking lost holding")
+
+		elif state == "WALL_1_PAUSE":
+			if time.time() - pause_start < 1.5:
+				send_command_logged("0, 0, 0, holding pause")
+			else:
+				state = "BLACK_WALL_PD_APPROACH"
+				last_alignment_error = 0.0
+
+		elif state == "BLACK_WALL_PD_APPROACH":
+			_, dist_left = get_track_distance(PROBE_LEFT_X, PROBE_Y)
+			_, dist_right = get_track_distance(PROBE_RIGHT_X, PROBE_Y)
+			dist_left += 1.7
+
+			if dist_left < STOP_DISTANCE_THRESHOLD or dist_right < STOP_DISTANCE_THRESHOLD:
+				send_command_logged("0, 0, 0, R")
+				time.sleep(1.0)
+				state = "BACKWARD"
+				continue
+
+			alignment_error = dist_left - dist_right
+			derivative = alignment_error - last_alignment_error
+			pd_steering = int(clamp((KP * alignment_error) + (KD * derivative), -55, 55))
+			last_alignment_error = alignment_error
+			send_command_logged(f"6, {pd_steering}, 0, pd front wall alignment")
+
+		elif state == "BACKWARD":
+			send_command_logged("-9, 0, 1, forward target")
+			if not wait_for_target_done():
+				return False
+			send_command_logged("-1, 0, 0, R")
+			state = "BACKWARD_TURN_1"
+
+		elif state == "BACKWARD_TURN_1":
+			steer = -100 if is_clockwise else 100
+			send_command_logged(f"-9, {steer}, 45, forward target")
+			if not wait_for_target_done():
+				return False
+			send_command_logged("-1, 0, 0, R")
+			state = "BACKWARD_STRAIGHT"
+
+		elif state == "BACKWARD_STRAIGHT":
+			send_command_logged("-9, 0, 3, forward target")
+			if not wait_for_target_done():
+				return False
+			send_command_logged("-1, 0, 0, R")
+			state = "BACKWARD_TURN_2"
+
+		elif state == "BACKWARD_TURN_2":
+			steer = 100 if is_clockwise else -100
+			send_command_logged(f"-9, {steer}, 55, forward target")
+			if not wait_for_target_done():
+				return False
+			send_command_logged("-1, 0, 0, R")
+			state = "COMPLETED"
+
+		elif state == "COMPLETED":
+			send_command_logged("0, 0, 0, parking complete")
+			return True
+
+		time.sleep(0.02)
+
+def run_parking_other():
+	print("[PARKING] Using parking2.py routine (last block not RED)")
+	PROBE_Y_FORWARD = 134
+	PROBE_LEFT_X_FORWARD = 320
+	PROBE_RIGHT_X_FORWARD = 360
+	TARGET_DIST = 1.0
+	MIN_STOP_DIST = 0.9
+	MAX_STOP_DIST = 1.1
+	KP_SPEED = 10.0
+	KP = 30
+	KD = 1.2
+	last_alignment_error = 0.0
+	last_direction = None
+	oscillation_count = 0
+	state = "BLACK_WALL_PD_APPROACH"
+
+	while True:
+		reply = esp_replyNprint()
+		if reply == "EOC2":
+			return False
+
+		if state == "BLACK_WALL_PD_APPROACH":
+			_, dist_left = get_track_distance(PROBE_LEFT_X_FORWARD, PROBE_Y_FORWARD)
+			_, dist_right = get_track_distance(PROBE_RIGHT_X_FORWARD, PROBE_Y_FORWARD)
+			dist_left += 0.5
+
+			if (MIN_STOP_DIST <= dist_left <= MAX_STOP_DIST) and (MIN_STOP_DIST <= dist_right <= MAX_STOP_DIST):
+				send_command_logged("0, 0, 0, R")
+				state = "COMPLETED"
+				continue
+
+			mean_distance = (dist_left + dist_right) / 2.0
+			dist_error = mean_distance - TARGET_DIST
+			current_direction = 1 if dist_error >= 0 else -1
+			if last_direction is not None and current_direction != last_direction:
+				oscillation_count += 1
+				if oscillation_count >= 2:
+					send_command_logged("0, 0, 0, R")
+					state = "COMPLETED"
+					continue
+
+			last_direction = current_direction
+			base_speed = float(clamp(dist_error * KP_SPEED, -6.0, 6.0))
+			speed_mode = "smooth forward approach" if base_speed >= 0 else "smooth overshoot backing"
+			alignment_error = dist_left - dist_right
+			derivative = alignment_error - last_alignment_error
+			pd_steering = int(clamp((KP * alignment_error) + (KD * derivative), -55, 55))
+			last_alignment_error = alignment_error
+			if base_speed < 0:
+				pd_steering = -pd_steering
+			send_command_logged(f"{base_speed:.1f}, {pd_steering}, 0, {speed_mode}")
+
+		elif state == "COMPLETED":
+			state = "RIGHT_TURN_90"
+
+		elif state == "RIGHT_TURN_90":
+			send_command_logged("-8.5, 100, 61, forward target")
+			if not wait_for_target_done():
+				return False
+			send_command_logged("0, 0, 0, R")
+			state = "STEERING_REALIGN"
+
+		elif state == "STEERING_REALIGN":
+			send_command_logged("0, -30, 0, friction break pulse")
+			time.sleep(0.15)
+			send_command_logged("0, 0, 0, R")
+			state = "BACKWARD_ENCODER_MOVE"
+
+		elif state == "BACKWARD_ENCODER_MOVE":
+			send_command_logged("-8.5, 0, 72, forward target")
+			if not wait_for_target_done():
+				return False
+			send_command_logged("0, 0, 0, R")
+			state = "FINAL_TURN_90"
+
+		elif state == "FINAL_TURN_90":
+			send_command_logged("8.5, 100, 45, forward target")
+			if not wait_for_target_done():
+				return False
+			send_command_logged("0, -30, 0, friction break pulse")
+			time.sleep(0.15)
+			send_command_logged("0, 0, 0, R")
+			state = "REAR_SAFETY_BACKOFF"
+
+		elif state == "REAR_SAFETY_BACKOFF":
+			send_command_logged("-8.5, -30, 16, forward target")
+			if not wait_for_target_done():
+				return False
+			send_command_logged("0, 0, 0, R")
+			state = "FINAL_CORRECTION_TURN"
+
+		elif state == "FINAL_CORRECTION_TURN":
+			send_command_logged("-8.5, -100, 47, forward target")
+			if not wait_for_target_done():
+				return False
+			send_command_logged("0, 60, 0, dynamic shake right")
+			time.sleep(0.18)
+			send_command_logged("0, 0, 0, straight hold")
+			time.sleep(0.10)
+			send_command_logged("0, 0, 0, R")
+			return True
+
+		time.sleep(0.02)
+
 state = States.INIT
 OC2_state = OC2_States.INIT
 try:
@@ -115,6 +337,7 @@ try:
 				pillar_count = 0
 				pillar_count_flag = 1
 				enter_flag = 0
+				last_pillar_color = None
 				OC2_state = OC2_States.LEAVE
 				print("leave") 
 			# End of reset #
@@ -298,6 +521,8 @@ try:
 					break
 				time.sleep(0.03)
 				pillar, lot, track = get_latest_data()
+				if pillar["color"] is not None:
+					last_pillar_color = pillar["color"]
 
 				# OC2 FSM #
 				#left = [240, 120] 
@@ -384,8 +609,18 @@ try:
 					continue
 				
 				if OC2_state == OC2_States.ENTER:
-					esp.send_command("0, 0, 0, stop")
+					print("last pillar color before stop:", last_pillar_color)
+					send_command_logged("0, 0, 0, stop before parking")
+					if last_pillar_color == "RED":
+						parking_completed = run_parking_red()
+					else:
+						parking_completed = run_parking_other()
+					if parking_completed:
+						print("[PARKING] Completed successfully")
+					else:
+						print("[PARKING] Aborted by EOC2")
 					run_OC2 = 0
+					reset_OC = True
 					break
 
 				# End of OC2 FSM #
