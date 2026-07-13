@@ -1,3 +1,4 @@
+import numpy as np
 import cv2
 import time
 import datetime
@@ -65,17 +66,20 @@ run_target_sent = False
 # ==================================================================
 # CONFIGURATION PARAMETERS
 # ==================================================================
-PROBE_Y_FORWARD = 134            
-PROBE_LEFT_X_FORWARD = 320       
-PROBE_RIGHT_X_FORWARD = 360      
+PROBE_Y = 79
+PROBE_LEFT_X = 179
+PROBE_RIGHT_X = 204
+FRONT_EDGE_Y_MIN = 62
+FRONT_EDGE_Y_MAX = 95
+TOUCH_POINT_X = 169
+TOUCH_POINT_Y = 86
+STOP_DISTANCE_THRESHOLD = 1.0
+APPROACH_SPEED = 5
 
-TARGET_DIST = 1.0
-MIN_STOP_DIST = 0.9            
-MAX_STOP_DIST = 1.1            
-
-KP_SPEED = 10.0
 KP = 30
 KD = 1.2
+KP_ANGLE = 2.8
+KD_ANGLE = 0.9
 
 last_alignment_error = 0.0
 last_direction = None          
@@ -112,6 +116,29 @@ def esp_replyNprint():
         print("Attempting to bypass frame drop...")
     return None
 
+def get_front_edge_angle(track_polygon, y_min=FRONT_EDGE_Y_MIN, y_max=FRONT_EDGE_Y_MAX):
+    if track_polygon is None:
+        return None
+
+    pts = track_polygon.reshape(-1, 2)
+    roi_pts = []
+    for x, y in pts:
+        if y_min <= y <= y_max:
+            roi_pts.append([float(x), float(y)])
+
+    if len(roi_pts) < 5:
+        return None
+
+    roi_pts = np.array(roi_pts, dtype=np.float32)
+    vx, vy, _, _ = cv2.fitLine(roi_pts, cv2.DIST_L2, 0, 0.01, 0.01)
+    angle_deg = math.degrees(math.atan2(float(vy), float(vx)))
+
+    while angle_deg > 90:
+        angle_deg -= 180
+    while angle_deg < -90:
+        angle_deg += 180
+    return angle_deg
+
 oc1_parking_state = ParkingStates.BLACK_WALL_PD_APPROACH
 
 try:
@@ -143,50 +170,47 @@ try:
                 # CONTINUOUS PD APPROACH WITH OSCILLATION SAFETIES
                 # ==================================================================
                 if oc1_parking_state == ParkingStates.BLACK_WALL_PD_APPROACH:
-                    has_poly_l, dist_left = get_track_distance(PROBE_LEFT_X_FORWARD, PROBE_Y_FORWARD)
-                    has_poly_r, dist_right = get_track_distance(PROBE_RIGHT_X_FORWARD, PROBE_Y_FORWARD)
-                    
-                    dist_left = dist_left + 0.5
+                    _, _, track = get_latest_data()
+                    touch_inside, touch_dist = get_track_distance(TOUCH_POINT_X, TOUCH_POINT_Y)
+                    edge_angle = get_front_edge_angle(track.get("polygon"))
 
-                    print(f"[PROBE LEFT  ({PROBE_LEFT_X_FORWARD}, {PROBE_Y_FORWARD})] Distance: {dist_left:.2f}")
-                    print(f"[PROBE RIGHT ({PROBE_RIGHT_X_FORWARD}, {PROBE_Y_FORWARD})] Distance: {dist_right:.2f}")
+                    print(f"[TOUCH POINT ({TOUCH_POINT_X}, {TOUCH_POINT_Y})] Inside Poly: {int(touch_inside)} | Distance to Edge: {touch_dist:.2f}")
+                    if edge_angle is not None:
+                        print(f"[FRONT EDGE ANGLE] {edge_angle:+.2f} deg")
 
-                    if (MIN_STOP_DIST <= dist_left <= MAX_STOP_DIST) and \
-                       (MIN_STOP_DIST <= dist_right <= MAX_STOP_DIST):
-                        
+                    if touch_dist < STOP_DISTANCE_THRESHOLD:
                         send_command_logged("0, 0, 0, R")
                         oc1_parking_state = ParkingStates.COMPLETED
                         run_target_sent = False
                         target_done = False
                         continue
 
-                    mean_distance = (dist_left + dist_right) / 2.0
-                    dist_error = mean_distance - TARGET_DIST
-                    
-                    current_direction = 1 if dist_error >= 0 else -1
-                    if last_direction is not None and current_direction != last_direction:
-                        oscillation_count += 1
-                        if oscillation_count >= 2:
-                            send_command_logged("0, 0, 0, R")
-                            oc1_parking_state = ParkingStates.COMPLETED
-                            run_target_sent = False
-                            target_done = False
-                            continue
-                            
-                    last_direction = current_direction
-                    base_speed = float(clamp(dist_error * KP_SPEED, -6.0, 6.0))
-                    speed_mode = "smooth forward approach" if base_speed >= 0 else "smooth overshoot backing"
-
-                    alignment_error = dist_left - dist_right
-                    derivative = alignment_error - last_alignment_error
-
-                    pd_steering = int(clamp((KP * alignment_error) + (KD * derivative), -55, 55))
-                    last_alignment_error = alignment_error
-
-                    if base_speed < 0:
-                        pd_steering = -pd_steering
-
-                    send_command_logged(f"{base_speed:.1f}, {pd_steering}, 0, {speed_mode}")
+                    if edge_angle is not None:
+                        alignment_error = edge_angle
+                        derivative = alignment_error - last_alignment_error
+                        pd_steering = int(clamp(-(KP_ANGLE * alignment_error) - (KD_ANGLE * derivative) - 12, -55, 55))
+                        last_alignment_error = alignment_error
+                        send_command_logged(f"{APPROACH_SPEED}, {pd_steering}, 0, front edge line align")
+                        print(f"[EDGE PID] Edge Angle Error: {alignment_error:+.2f} deg | Speed: {APPROACH_SPEED:.2f} | Steer: {pd_steering}\n")
+                    else:
+                        has_poly_l, dist_left = get_track_distance(PROBE_LEFT_X, PROBE_Y)
+                        has_poly_r, dist_right = get_track_distance(PROBE_RIGHT_X, PROBE_Y)
+                        if dist_left is None or dist_right is None:
+                            last_alignment_error = 0.0
+                            print(f"[FALLBACK PROBE LEFT  ({PROBE_LEFT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_l)} | Distance to Edge: {dist_left}")
+                            print(f"[FALLBACK PROBE RIGHT ({PROBE_RIGHT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_r)} | Distance to Edge: {dist_right}")
+                            send_command_logged(f"{APPROACH_SPEED}, 0, 0, fallback probe search")
+                            print(f"[FALLBACK EDGE PID] Probe distance missing. Speed: {APPROACH_SPEED:.2f} | Steer: 0\n")
+                        else:
+                            dist_left = dist_left + 0.6
+                            print(f"[FALLBACK PROBE LEFT  ({PROBE_LEFT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_l)} | Distance to Edge: {dist_left:.2f}")
+                            print(f"[FALLBACK PROBE RIGHT ({PROBE_RIGHT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_r)} | Distance to Edge: {dist_right:.2f}")
+                            alignment_error = dist_left - dist_right
+                            derivative = alignment_error - last_alignment_error
+                            pd_steering = int(clamp((KP * alignment_error) + (KD * derivative), -55, 55))
+                            last_alignment_error = alignment_error
+                            send_command_logged(f"{APPROACH_SPEED}, {pd_steering}, 0, fallback probe align")
+                            print(f"[FALLBACK EDGE PID] Alignment Error: {alignment_error:+.2f} | Speed: {APPROACH_SPEED:.2f} | Steer: {pd_steering}\n")
 
                 # ==================================================================
                 # STANDBY COMPLETED HOLDING STATE
