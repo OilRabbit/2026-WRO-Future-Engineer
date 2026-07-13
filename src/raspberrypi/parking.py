@@ -8,7 +8,8 @@ from camera.camera_utils import (
     start_web_server,
     get_latest_data,
     stop_vision_system,
-    get_track_distance  # Returns (is_inside, exact_distance)
+    get_track_distance,  # Returns (is_inside, exact_distance)
+    configure_vision_pipeline,
 )
 from picamera2 import Picamera2 as picam2
 from enum import Enum
@@ -19,12 +20,28 @@ print("======= Init =======")
 esp = ESP32Communicator()
 esp.connect()
 camera = picam2()
-full_sensor_res = camera.sensor_resolution
+video_size = (400, 225)
+sensor_video_size = (2304, 1296)
+target_frame_duration_us = 10000
 
-config = camera.create_video_configuration(main={"size": (640, 360), "format": "BGR888"}, sensor={"output_size": full_sensor_res})
+config = camera.create_video_configuration(
+    main={"size": video_size, "format": "BGR888"},
+    sensor={"output_size": sensor_video_size},
+    controls={"FrameDurationLimits": (target_frame_duration_us, target_frame_duration_us)},
+    buffer_count=4,
+    queue=False,
+)
 camera.configure(config)
 camera.start()
 print("Camera: Activated")
+
+configure_vision_pipeline(
+    draw_overlays=True,
+    show_debug_strip=False,
+    stream_use_debug_frame=False,
+    record_use_debug_frame=False,
+    stream_jpeg_quality=70,
+)
 
 start_vision_system(camera, True)
 
