@@ -75,14 +75,14 @@ PROBE_LEFT_X = 179             # Inward adjusted left column
 PROBE_RIGHT_X = 204            # Inward adjusted right column
 FRONT_EDGE_Y_MIN = 62
 FRONT_EDGE_Y_MAX = 95
-TOUCH_POINT_X = 168
+TOUCH_POINT_X = 169            # Smaller = further away from the parking lot. Larger = closer to the parking lot
 TOUCH_POINT_Y = 86
 
 # STOPPING CONDITION
 STOP_DISTANCE_THRESHOLD = 1.0  # Stop walking forward when distance to edge < 1
 
 # PD Controller gains for steering alignment
-KP = 17.5
+KP = 24
 KD = 1.2
 KP_ANGLE = 2.8
 KD_ANGLE = 0.9
@@ -178,6 +178,7 @@ try:
                 if oc1_parking_state == ParkingStates.ALIGNING:
                     _, parking, _ = get_latest_data()
                     purple_x = parking.get("center_x", 0)
+                    purple_y = parking.get("center_y", 0)
                     purple_width = parking.get("width", 0)
                     purple_height = parking.get("height", 0)
                     purple_area = (purple_width * purple_height) // 100
@@ -193,7 +194,7 @@ try:
                         else:
                             error = purple_x - PURPLE_TARGET_X
                             kp_purple = 1.9
-                            align_steering = int(clamp(error * kp_purple, -65, 65))
+                            align_steering = int(clamp(error * kp_purple, -55, 55))
                             send_command_logged(f"{PURPLE_ALIGN_SPEED}, {align_steering}, 0, purple align")
                     else:
                         send_command_logged("0, 0, 0, tracking lost holding")
@@ -228,10 +229,11 @@ try:
                         target_done = False
                         continue
 
-                    if edge_angle is not None:
+                    #if edge_angle is not None:
+                    if purple_y > 180:
                         alignment_error = edge_angle
                         derivative = alignment_error - last_alignment_error
-                        pd_steering = int(clamp(-(KP_ANGLE * alignment_error) - (KD_ANGLE * derivative), -55, 55))
+                        pd_steering = int(clamp(-(KP_ANGLE * alignment_error) - (KD_ANGLE * derivative) - 12, -55, 55))
                         last_alignment_error = alignment_error
                         send_command_logged(f"{PURPLE_ALIGN_SPEED}, {pd_steering}, 0, front edge line align")
                         print(f"[PD CONTROL] Edge Angle Error: {alignment_error:+.2f} deg | Transmitted Steer: {pd_steering}\n")
@@ -305,7 +307,7 @@ try:
                     if run_target_sent == False:
                         steer = 100 if is_clockwise else -100
                         send_command_logged(f"0, 0, -1, stop")
-                        send_command_logged(f"-6, {steer}, 39, P")
+                        send_command_logged(f"-6, {steer}, 40, P")
                         run_target_sent = True
                         target_done = False
 
