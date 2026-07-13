@@ -1,3 +1,4 @@
+import numpy as np
 import cv2
 import time
 import datetime
@@ -74,14 +75,14 @@ PROBE_LEFT_X = 179             # Inward adjusted left column
 PROBE_RIGHT_X = 204            # Inward adjusted right column
 FRONT_EDGE_Y_MIN = 62
 FRONT_EDGE_Y_MAX = 95
-TOUCH_POINT_X = 191
-TOUCH_POINT_Y = 78
+TOUCH_POINT_X = 169
+TOUCH_POINT_Y = 83
 
 # STOPPING CONDITION
 STOP_DISTANCE_THRESHOLD = 1.0  # Stop walking forward when distance to edge < 1
 
 # PD Controller gains for steering alignment
-KP = 18
+KP = 17.5
 KD = 1.2
 KP_ANGLE = 2.8
 KD_ANGLE = 0.9
@@ -95,10 +96,11 @@ class ParkingStates(Enum):
     BLACK_WALL_PD_APPROACH = 2 # Continuous PD straight approach (White Edge)
     BACKWARD = 3        # Step 1: Encoder micro-positioning
     BACKWARD_TURN_1 = 4     # Step 2: Reverse entry swing
-    BACKWARD_STRAIGHT = 5   # Step 2b: Straight depth segment
-    BACKWARD_TURN_2 = 6
-    BACKWARD_TURN_3 = 7# Step 3: Counter-steer alignment
-    COMPLETED = 8           # Complete
+    BACKWARD_TURN_1A = 5
+    BACKWARD_STRAIGHT = 6   # Step 2b: Straight depth segment
+    BACKWARD_TURN_2 = 7
+    BACKWARD_TURN_3 = 8# Step 3: Counter-steer alignment
+    COMPLETED = 9           # Complete
 
 def clamp(value, minimum, maximum):
     return max(minimum, min(maximum, value))
@@ -231,7 +233,7 @@ try:
                         derivative = alignment_error - last_alignment_error
                         pd_steering = int(clamp(-(KP_ANGLE * alignment_error) - (KD_ANGLE * derivative), -55, 55))
                         last_alignment_error = alignment_error
-                        send_command_logged(f"6, {pd_steering}, 0, front edge line align")
+                        send_command_logged(f"{PURPLE_ALIGN_SPEED}, {pd_steering}, 0, front edge line align")
                         print(f"[PD CONTROL] Edge Angle Error: {alignment_error:+.2f} deg | Transmitted Steer: {pd_steering}\n")
                     else:
                         # Fallback if the edge line cannot be fit reliably
@@ -244,7 +246,7 @@ try:
                         derivative = alignment_error - last_alignment_error
                         pd_steering = int(clamp((KP * alignment_error) + (KD * derivative), -55, 55))
                         last_alignment_error = alignment_error
-                        send_command_logged(f"6, {pd_steering}, 0, fallback probe align")
+                        send_command_logged(f"{PURPLE_ALIGN_SPEED}, {pd_steering}, 0, fallback probe align")
                         print(f"[FALLBACK PD] Alignment Error: {alignment_error:+.2f} | Transmitted Steer: {pd_steering}\n")
 
                 # ==================================================================
@@ -252,7 +254,7 @@ try:
                 # ==================================================================
                 elif oc1_parking_state == ParkingStates.BACKWARD:
                     if run_target_sent == False:
-                        send_command_logged(f"-7, 0, 1, forward target")
+                        send_command_logged(f"-6, 0, 1, forward target")
                         run_target_sent = True
                         target_done = False
 
@@ -268,8 +270,8 @@ try:
 
                 elif oc1_parking_state == ParkingStates.BACKWARD_TURN_1:
                     if run_target_sent == False:
-                        steer = -95 if is_clockwise else 95
-                        send_command_logged(f"-8, {steer}, 53, forward target")
+                        steer = -100 if is_clockwise else 100
+                        send_command_logged(f"-6, {steer}, 38, P")
                         run_target_sent = True
                         target_done = False
 
@@ -278,14 +280,14 @@ try:
                         continue
                     else:
                         send_command_logged("-1, 0, 0, R")
-                        oc1_parking_state = ParkingStates.BACKWARD_STRAIGHT
+                        oc1_parking_state = ParkingStates.BACKWARD_TURN_1A
                         run_target_sent = False
                         target_done = False
                         continue
 
-                elif oc1_parking_state == ParkingStates.BACKWARD_STRAIGHT:
+                elif oc1_parking_state == ParkingStates.BACKWARD_TURN_1A:
                     if run_target_sent == False:
-                        send_command_logged("-8, 0, 2, forward target")
+                        send_command_logged(f"-6, 0, 6, P")
                         run_target_sent = True
                         target_done = False
 
@@ -301,8 +303,9 @@ try:
 
                 elif oc1_parking_state == ParkingStates.BACKWARD_TURN_2:
                     if run_target_sent == False:
-                        steer = 95 if is_clockwise else -95
-                        send_command_logged(f"-8, {steer}, 35, forward target")
+                        steer = 100 if is_clockwise else -100
+                        send_command_logged(f"0, 0, -1, stop")
+                        send_command_logged(f"-6, {steer}, 39, P")
                         run_target_sent = True
                         target_done = False
 
@@ -311,15 +314,14 @@ try:
                         continue
                     else:
                         send_command_logged("-1, 0, 0, R")
-                        oc1_parking_state = ParkingStates.BACKWARD_TURN_3
+                        oc1_parking_state = ParkingStates.COMPLETED
                         run_target_sent = False
                         target_done = False
                         continue
 
-                elif oc1_parking_state == ParkingStates.BACKWARD_TURN_3:
+                elif oc1_parking_state == ParkingStates.BACKWARD_STRAIGHT:
                     if run_target_sent == False:
-                        steer = -95 if is_clockwise else 95
-                        send_command_logged(f"8, {steer}, 20, forward target")
+                        send_command_logged("6, 50, 17, forward target")
                         run_target_sent = True
                         target_done = False
 
