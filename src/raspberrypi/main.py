@@ -2,7 +2,7 @@ import time
 import datetime
 import math
 from esp_com.communication import ESP32Communicator
-from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance
+from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance, configure_vision_pipeline
 from picamera2 import Picamera2 as picam2
 from enum import Enum
 
@@ -12,11 +12,27 @@ print("======= Init =======")
 esp = ESP32Communicator()
 esp.connect()
 camera = picam2()
-full_sensor_res = camera.sensor_resolution
-config = camera.create_video_configuration(main={"size": (640, 360), "format": "BGR888"},sensor={"output_size": full_sensor_res})
+video_size = (400, 225)
+sensor_video_size = (2304, 1296)
+target_frame_duration_us = 10000
+config = camera.create_video_configuration(
+	main={"size": video_size, "format": "BGR888"},
+	sensor={"output_size": sensor_video_size},
+	controls={"FrameDurationLimits": (target_frame_duration_us, target_frame_duration_us)},
+	buffer_count=4,
+	queue=False,
+)
 camera.configure(config)
 camera.start()
 print("Camera: Activated")
+
+configure_vision_pipeline(
+	draw_overlays=True,
+	show_debug_strip=False,
+	stream_use_debug_frame=False,
+	record_use_debug_frame=False,
+	stream_jpeg_quality=70,
+)
 
 start_vision_system(camera, True)
 
@@ -44,9 +60,9 @@ angle = 0 #steering percentage
 speed = 0
 speed_var = 0
 turn_flag = 0
-turn_indi_1 = [320, 140] #check when to turn
-turn_indi_2 = [320, 170] #check when to turn
-sector_indi = [[240, 140], [400, 140]] #check when is sector
+turn_indi_1 = [200, 87.5] #check when to turn
+turn_indi_2 = [200, 106.25] #check when to turn
+sector_indi = [[150, 87.5], [250, 87.5]] #check when is sector
 turn_time = 0
 run_time = 0
 lot_count = 0
@@ -57,13 +73,13 @@ pillar_count_temp = 0
 enter_flag = 0
 last_pillar_color = None
 
-front_turning_point = [320, 70]
-left_turning_point = [40, 200] #check direction
-right_turning_point = [600, 200] #check direction
+front_turning_point = [200, 43.75]
+left_turning_point = [25, 125] #check direction
+right_turning_point = [375, 125] #check direction
 turning_point = right_turning_point #check if the robot get to the position that should turn
-track_left = [[80, 180], [520, 180]] #check if the robot is getting left from the ideal track
-track_right = [[120, 180], [560, 180]] #check if the robot is getting right from the ideal track
-ending_point = [320, 30] #check if the robot is at the ideal point to end
+track_left = [[50, 112.5], [325, 112.5]] #check if the robot is getting left from the ideal track
+track_right = [[75, 112.5], [350, 112.5]] #check if the robot is getting right from the ideal track
+ending_point = [200, 18.75] #check if the robot is at the ideal point to end
 
 #States
 class States(Enum):
@@ -111,13 +127,13 @@ def wait_for_target_done(stop_reply="EOC2"):
 
 def run_parking_red():
 	print("[PARKING] Using parking.py routine (last block RED)")
-	PURPLE_TARGET_X = 470
+	PURPLE_TARGET_X = 293.75
 	PURPLE_ALIGN_SPEED = 7.5
 	PURPLE_STOP_THRESHOLD = 130
-	PROBE_Y = 129.5
-	PROBE_LEFT_X = 260
-	PROBE_RIGHT_X = 300
-	STOP_DISTANCE_THRESHOLD = 1.0
+	PROBE_Y = 80.9375
+	PROBE_LEFT_X = 162.5
+	PROBE_RIGHT_X = 187.5
+	STOP_DISTANCE_THRESHOLD = 0.625
 	KP = 20
 	KD = 1.2
 	last_alignment_error = 0.0
@@ -158,7 +174,7 @@ def run_parking_red():
 		elif state == "BLACK_WALL_PD_APPROACH":
 			_, dist_left = get_track_distance(PROBE_LEFT_X, PROBE_Y)
 			_, dist_right = get_track_distance(PROBE_RIGHT_X, PROBE_Y)
-			dist_left += 1.7
+			dist_left += 1.0625
 
 			if dist_left < STOP_DISTANCE_THRESHOLD or dist_right < STOP_DISTANCE_THRESHOLD:
 				send_command_logged("0, 0, 0, R")
@@ -210,12 +226,12 @@ def run_parking_red():
 
 def run_parking_other():
 	print("[PARKING] Using parking2.py routine (last block not RED)")
-	PROBE_Y_FORWARD = 134
-	PROBE_LEFT_X_FORWARD = 320
-	PROBE_RIGHT_X_FORWARD = 360
-	TARGET_DIST = 1.0
-	MIN_STOP_DIST = 0.9
-	MAX_STOP_DIST = 1.1
+	PROBE_Y_FORWARD = 83.75
+	PROBE_LEFT_X_FORWARD = 200
+	PROBE_RIGHT_X_FORWARD = 225
+	TARGET_DIST = 0.625
+	MIN_STOP_DIST = 0.5625
+	MAX_STOP_DIST = 0.6875
 	KP_SPEED = 10.0
 	KP = 30
 	KD = 1.2
@@ -232,7 +248,7 @@ def run_parking_other():
 		if state == "BLACK_WALL_PD_APPROACH":
 			_, dist_left = get_track_distance(PROBE_LEFT_X_FORWARD, PROBE_Y_FORWARD)
 			_, dist_right = get_track_distance(PROBE_RIGHT_X_FORWARD, PROBE_Y_FORWARD)
-			dist_left += 0.5
+			dist_left += 0.3125
 
 			if (MIN_STOP_DIST <= dist_left <= MAX_STOP_DIST) and (MIN_STOP_DIST <= dist_right <= MAX_STOP_DIST):
 				send_command_logged("0, 0, 0, R")
@@ -363,13 +379,13 @@ try:
 				#Format eg: esp.send_command("<speed>, <streering percentage>, <distance(-1 when not needed)>, <what to do>")
 				#The first sector
 				if state == States.FIRST_SECTOR:
-					angle = (track["center_x"]-320)*abs(track["center_x"]-320)/80
+					angle = (track["center_x"]-200)*abs(track["center_x"]-200)/50
 					esp.send_command("12, " + str(angle) + ", -1, move forward")
 					time.sleep(0.025)
 					if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False and get_track_distance(turn_indi_2[0], turn_indi_2[1])[0] == True and track["center_x"] != 0:
 						if turn_flag:
 							turn_flag = 0
-							if track["center_x"] < 320:
+							if track["center_x"] < 200:
 								is_clockwise = False
 							else:
 								is_clockwise = True
@@ -386,7 +402,7 @@ try:
 
 					esp.send_command("8, 0, -1, move forward")
 					if get_track_distance(turn_indi_1[0], turn_indi_1[1])[0] == False:
-						if track["center_x"] < 320 :
+						if track["center_x"] < 200 :
 							is_clockwise = False
 							turning_point = left_turning_point
 						state = States.WAIT_TURN_STATE
@@ -407,7 +423,7 @@ try:
 				
 				#Turn 
 				elif state == States.TURNING_STATE:
-					angle = (track["center_x"]-320)/0.4
+					angle = (track["center_x"]-200)/0.25
 					if angle > 100:
 						angle = 100
 					if angle <-100:
@@ -463,7 +479,7 @@ try:
 				#Run sector and keep a certain distance from the inner barrier
 				elif state == States.RUN_SECTOR_STATE:                    
 					if track["center_x"] != 0:
-						angle_temp = (track["center_x"]-320)*abs(track["center_x"]-320)/300
+						angle_temp = (track["center_x"]-200)*abs(track["center_x"]-200)/187.5
 						if angle_temp < 50 and angle_temp > -50:
 							angle = angle_temp
 					esp.send_command("12, " + str(angle) + ", -1, move forward")
@@ -499,7 +515,7 @@ try:
 					esp.send_command("0, 0, 0,motor stop")
 					break
 					if track["center_x"] != 0:
-						angle = (track["center_x"]-320)*abs(track["center_x"]-320)/60
+						angle = (track["center_x"]-200)*abs(track["center_x"]-200)/37.5
 					esp.send_command("10, " + str(angle) + ", -1, move forward")
 					time.sleep(0.05)
 					#Wait until the ending_point reach the wall in front of the robot
@@ -537,7 +553,7 @@ try:
 						print("lot " + str(lot_count))
 						lot_count_flag = 0
 						pillar_count_temp = pillar_count
-					if lot["center_y"] > 180:
+					if lot["center_y"] > 112.5:
 						enter_flag = 1
 				elif (pillar_count - 2) > pillar_count_temp:
 					lot_count_flag = 1
@@ -547,7 +563,7 @@ try:
 					OC2_state = OC2_States.ENTER
 
 				if OC2_state == OC2_States.LEAVE:
-					if track["center_x"] < 320:
+					if track["center_x"] < 200:
 						is_clockwise = False
 					esp.send_command("0, " + str(is_clockwise * 200 - 100) + ", -1, turn")
 					time.sleep(0.1)
@@ -558,7 +574,7 @@ try:
 					esp.send_command("0, 0, -1, stop")
 					time.sleep(0.4)
 					pillar, lot, track = get_latest_data()
-					if pillar["color"] != None and abs(pillar["center_x"] - 320) > 160:
+					if pillar["color"] != None and abs(pillar["center_x"] - 200) > 100:
 						esp.send_command("8, 0, -1, move")
 						print(pillar["color"] + str(pillar["center_x"]))
 						time.sleep(1)
@@ -571,7 +587,7 @@ try:
 						OC2_state = OC2_States.PILLAR
 						print("pillar")
 						continue
-					angle = (track["center_x"] - 350 + is_clockwise * 60) / 0.3
+					angle = (track["center_x"] - 218.75 + is_clockwise * 37.5) / 0.1875
 					if angle > 97.5:
 						angle = 97.5
 					if angle < -97.5:
@@ -586,25 +602,25 @@ try:
 						OC2_state = OC2_States.WHITE
 						print("white")
 						continue
-					angle = (pillar["center_x"] * 1.75 + ((pillar["color"] == "RED") * 2 - 1) * pillar["center_y"] - 525 - (pillar["color"] == "GREEN") * 70) / 2
-					#if not get_track_distance(100 + is_clockwise * 440, 270)[0] and angle * (is_clockwise * 2 - 1) > 0:
+					angle = (pillar["center_x"] * 1.75 + ((pillar["color"] == "RED") * 2 - 1) * pillar["center_y"] - 328.125 - (pillar["color"] == "GREEN") * 43.75) / 2
+					#if not get_track_distance(62.5 + is_clockwise * 275, 168.75)[0] and angle * (is_clockwise * 2 - 1) > 0:
 						#angle = 20 - is_clockwise * 40
 					if angle > 97.5:
 						angle = 97.5
 					if angle < -97.5:
 						angle = -97.5
-					if pillar["center_y"] < 180:
-						angle /= ((180 / pillar["center_y"]) ** 1.5)
+					if pillar["center_y"] < 112.5:
+						angle /= ((112.5 / pillar["center_y"]) ** 1.5)
 					print(angle)
 					speed_var = min(100, abs(angle)) / 133
 					speed = 8 + speed_var
 					esp.send_command(str(speed) + ", " + str(angle) + ", -1, P")
-					if pillar["center_y"] > 270:
+					if pillar["center_y"] > 168.75:
 						if pillar_count_flag:
 							pillar_count += 1
 							print("pillar " + str(pillar_count))
 							pillar_count_flag = 0
-					elif pillar["center_y"] < 180:
+					elif pillar["center_y"] < 112.5:
 						pillar_count_flag = 1
 					continue
 				
