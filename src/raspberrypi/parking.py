@@ -90,8 +90,9 @@ class ParkingStates(Enum):
     BACKWARD = 3        # Step 1: Encoder micro-positioning
     BACKWARD_TURN_1 = 4     # Step 2: Reverse entry swing
     BACKWARD_STRAIGHT = 5   # Step 2b: Straight depth segment
-    BACKWARD_TURN_2 = 6     # Step 3: Counter-steer alignment
-    COMPLETED = 7           # Complete
+    BACKWARD_TURN_2 = 6
+    BACKWARD_TURN_3 = 7# Step 3: Counter-steer alignment
+    COMPLETED = 8           # Complete
 
 def clamp(value, minimum, maximum):
     return max(minimum, min(maximum, value))
@@ -231,7 +232,7 @@ try:
 
                 elif oc1_parking_state == ParkingStates.BACKWARD_TURN_1:
                     if run_target_sent == False:
-                        steer = -100 if is_clockwise else 100
+                        steer = -95 if is_clockwise else 95
                         send_command_logged(f"-8, {steer}, 53, forward target")
                         run_target_sent = True
                         target_done = False
@@ -264,8 +265,25 @@ try:
 
                 elif oc1_parking_state == ParkingStates.BACKWARD_TURN_2:
                     if run_target_sent == False:
-                        steer = 100 if is_clockwise else -100
-                        send_command_logged(f"-8, {steer}, 55, forward target")
+                        steer = 95 if is_clockwise else -95
+                        send_command_logged(f"-8, {steer}, 35, forward target")
+                        run_target_sent = True
+                        target_done = False
+
+                    if not target_done:
+                        time.sleep(0.001)
+                        continue
+                    else:
+                        send_command_logged("-1, 0, 0, R")
+                        oc1_parking_state = ParkingStates.BACKWARD_TURN_3
+                        run_target_sent = False
+                        target_done = False
+                        continue
+
+                elif oc1_parking_state == ParkingStates.BACKWARD_TURN_3:
+                    if run_target_sent == False:
+                        steer = -95 if is_clockwise else 95
+                        send_command_logged(f"8, {steer}, 20, forward target")
                         run_target_sent = True
                         target_done = False
 
