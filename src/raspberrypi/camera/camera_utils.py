@@ -90,7 +90,7 @@ def get_pillar_center(mask, min_area = 5):  # Changed from 20 to 1
 			x, y, w, h = cv2.boundingRect(contour)
 			center_x = x + (w // 2)
 			center_y = y + (h // 2)
-			if center_y > 200:
+			if center_y > 205:
 				continue
 			return (center_x, center_y, w, h)
 	return None

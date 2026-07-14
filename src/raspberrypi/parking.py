@@ -75,14 +75,14 @@ PROBE_LEFT_X = 179             # Inward adjusted left column
 PROBE_RIGHT_X = 204            # Inward adjusted right column
 FRONT_EDGE_Y_MIN = 62
 FRONT_EDGE_Y_MAX = 95
-TOUCH_POINT_X = 169            # Smaller = further away from the parking lot. Larger = closer to the parking lot
-TOUCH_POINT_Y = 86
+TOUCH_POINT_X = 150            # Smaller = further away from the parking lot. Larger = closer to the parking lot
+TOUCH_POINT_Y = 90
 
 # STOPPING CONDITION
 STOP_DISTANCE_THRESHOLD = 1.0  # Stop walking forward when distance to edge < 1
 
 # PD Controller gains for steering alignment
-KP = 24
+KP = 16
 KD = 1.2
 KP_ANGLE = 2.8
 KD_ANGLE = 0.9
