@@ -171,7 +171,7 @@ def _process_parkinglot(hsv):
 
 	if magenta_enabled:
 		magenta_mask = cv2.inRange(hsv, MAGENTA_LOWER, MAGENTA_UPPER)
-		m_box = get_pillar_center(magenta_mask, min_area = 5)  # Changed from 20 to 1
+		m_box = get_pillar_center(magenta_mask, min_area = 2)  # Changed from 20 to 1
 
 	if m_box:
 		parking = {"center_x": m_box[0], "center_y": m_box[1], "width": m_box[2], "height": m_box[3]}

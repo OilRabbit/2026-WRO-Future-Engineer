@@ -98,7 +98,8 @@ class OC2_States(Enum):
 	LEAVE = 1
 	WHITE = 2
 	PILLAR = 3
-	ENTER = 4
+	ALIGN_0 = 4
+	ENTER = 5
 
 # Function for receiving msg from ESP and print the message with timestamp
 def esp_replyNprint():
@@ -541,8 +542,6 @@ try:
 					break
 				time.sleep(0.03)
 				pillar, lot, track = get_latest_data()
-				if pillar["color"] is not None:
-					last_pillar_color = pillar["color"]
 
 				# OC2 FSM #
 				#left = [240, 120] 
@@ -563,21 +562,25 @@ try:
 					lot_count_flag = 1
 					enter_flag = 0
 				
-				if enter_flag and lot_count == 4 and pillar_count % 3 == 0:
-					OC2_state = OC2_States.ENTER
+				if lot_count == 4:
+					if pillar_count % 3 == 0:
+						OC2_state = OC2_States.ALIGN_0
+						print("align_0")
+					#elif pillar_count % 3 == 2:
+						#OC2_state = OC2_States.ALIGN_0
 
 				if OC2_state == OC2_States.LEAVE:
 					if track["center_x"] < 200:
 						is_clockwise = False
 					esp.send_command("0, " + str(is_clockwise * 200 - 100) + ", -1, P")
 					time.sleep(0.1)
-					esp.send_command("6, " + str(is_clockwise * 200 - 100) + ", 60, P")
+					esp.send_command("6, " + str(is_clockwise * 200 - 100) + ", 55, P")
 					while reply != "Done Target":
 						time.sleep(0.01)
 						reply = esp_replyNprint()
 					reply = esp_replyNprint()
 					esp.send_command("-1, 0, 0, R")
-					esp.send_command("-6, " + str(is_clockwise * -60 + 30) + ", 40, P")
+					esp.send_command("-6, " + str(is_clockwise * -80 + 40) + ", 20, P")
 					while reply != "Done Target":
 						time.sleep(0.01)
 						reply = esp_replyNprint()
@@ -632,10 +635,31 @@ try:
 							pillar_count += 1
 							print("pillar " + str(pillar_count))
 							pillar_count_flag = 0
+							if pillar_count % 3 == 0:
+								last_pillar_color = pillar["color"]
 					elif pillar["center_y"] < 112.5:
 						pillar_count_flag = 1
 					continue
-				
+
+				if OC2_state == OC2_States.ALIGN_0:
+					if lot["center_x"] > 0:
+						angle = (lot["center_x"] - lot["center_y"] - 170) / 1.25
+					else:
+						angle = (track["center_x"] - 200) / 0.1875
+					if angle > 95:
+						angle = 95
+					if angle < -95:
+						angle = -95
+					if lot["center_x"] > 0 and lot["center_y"] < 90:
+						angle /= ((90 / lot["center_y"]) ** 3)
+					print(angle)
+					speed_var = min(90, abs(angle)) / 90
+					speed = 5.5 + speed_var
+					esp.send_command(str(speed) + ", " + str(angle) + ", -1, P")
+					if lot["center_y"] > 135:
+						OC2_state = OC2_States.ENTER
+					continue
+
 				if OC2_state == OC2_States.ENTER:
 					print("last pillar color before stop:", last_pillar_color)
 					send_command_logged("0, 0, 0, stop before parking")
