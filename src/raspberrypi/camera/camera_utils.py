@@ -136,11 +136,11 @@ def _process_obstacle(hsv):
 		mask_r1 = cv2.inRange(hsv, RED_LOWER1, RED_UPPER1)
 		mask_r2 = cv2.inRange(hsv, RED_LOWER2, RED_UPPER2)
 		red_mask = cv2.bitwise_or(mask_r1, mask_r2)
-		r_box = get_pillar_center(red_mask, min_area = 2)  # Changed from 20 to 1
+		r_box = get_pillar_center(red_mask, min_area = 0.5)  # Changed from 20 to 1
 
 	if green_enabled:
 		green_mask = cv2.inRange(hsv, GREEN_LOWER, GREEN_UPPER)
-		g_box = get_pillar_center(green_mask, min_area = 2)  # Changed from 20 to 1
+		g_box = get_pillar_center(green_mask, min_area = 0.5)  # Changed from 20 to 1
 
 	largest = None
 	color = None
