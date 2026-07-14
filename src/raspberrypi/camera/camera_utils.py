@@ -81,13 +81,17 @@ def get_pillar_center(mask, min_area = 5):  # Changed from 20 to 1
 	mask = cv2.dilate(mask, None, iterations=1)
 	contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 	if contours:
-		largest_contour = max(contours, key=cv2.contourArea)
-		area = cv2.contourArea(largest_contour)
-		area = area // 100
-		if area > min_area:
-			x, y, w, h = cv2.boundingRect(largest_contour)
+		sorted_contours = sorted(contours, key=cv2.contourArea, reverse=True)
+		for contour in sorted_contours:
+			area = cv2.contourArea(contour)
+			area = area // 100
+			if area <= min_area:
+				continue
+			x, y, w, h = cv2.boundingRect(contour)
 			center_x = x + (w // 2)
 			center_y = y + (h // 2)
+			if center_y > 200:
+				continue
 			return (center_x, center_y, w, h)
 	return None
 
