@@ -238,6 +238,10 @@ def measure_followed_wall(track_polygon, is_clockwise):
 CORNER_DELTA_THRESHOLD = 22.0
 CORNER_CONFIRM_FRAMES = 2
 CORNER_REFRACTORY_S = 0.45
+MIN_NEAR_CORNER_WIDTH = 80.0
+FORWARD_WIDTH_RATIO_THRESHOLD = 0.55
+FORWARD_CORNER_ROWS = (90, 105)
+NEAR_CORNER_ROWS = (170, 185, 200)
 
 
 def update_corner_detection(track_polygon, is_clockwise, previous_metric, previous_count, last_trigger_time):
@@ -245,19 +249,36 @@ def update_corner_detection(track_polygon, is_clockwise, previous_metric, previo
 	if signature is None:
 		return False, previous_metric, 0, signature
 
+	forward_profile = measure_track_profile(track_polygon, FORWARD_CORNER_ROWS)
+	near_profile = measure_track_profile(track_polygon, NEAR_CORNER_ROWS)
+	forward_width = forward_profile["width"] if forward_profile is not None else 0.0
+	near_width = near_profile["width"] if near_profile is not None else 0.0
+
 	metric = signature["metric"]
 	if previous_metric is None:
 		signature["delta"] = 0.0
+		signature["forward_width"] = forward_width
+		signature["near_width"] = near_width
+		signature["geometry_trigger"] = False
 		return False, metric, 0, signature
 
 	delta = metric - previous_metric
 	signature["delta"] = delta
+	signature["forward_width"] = forward_width
+	signature["near_width"] = near_width
 
 	now = time.perf_counter()
 	if now - last_trigger_time < CORNER_REFRACTORY_S:
+		signature["geometry_trigger"] = False
 		return False, metric, 0, signature
 
-	if delta < -CORNER_DELTA_THRESHOLD:
+	geometry_trigger = (
+		near_width > MIN_NEAR_CORNER_WIDTH
+		and (forward_width == 0.0 or forward_width < near_width * FORWARD_WIDTH_RATIO_THRESHOLD)
+	)
+	signature["geometry_trigger"] = geometry_trigger
+
+	if delta < -CORNER_DELTA_THRESHOLD or geometry_trigger:
 		confirm_count = previous_count + 1
 	else:
 		confirm_count = 0
@@ -474,7 +495,9 @@ try:
 					if signature is not None:
 						print(
 							f"[CORNER METRIC] side={signature['avg_side_x']:.2f} bottom={signature['avg_bottom_y']:.2f} "
-							f"metric={signature['metric']:.2f} delta={signature.get('delta', 0.0):+.2f} count={corner_confirm_count}"
+							f"metric={signature['metric']:.2f} delta={signature.get('delta', 0.0):+.2f} "
+							f"near_w={signature.get('near_width', 0.0):.2f} forward_w={signature.get('forward_width', 0.0):.2f} "
+							f"geom={int(signature.get('geometry_trigger', False))} count={corner_confirm_count}"
 						)
 
 					if corner_detected and not front_sees_track:
