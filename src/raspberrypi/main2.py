@@ -233,8 +233,8 @@ def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, re
 	return steering, error, profile
 
 def get_sector_target_ratio(is_clockwise, completed_turns):
-	start_ratio = 0.52 if is_clockwise else 0.48
-	final_ratio = 0.58 if is_clockwise else 0.42
+	start_ratio = 0.48 if is_clockwise else 0.52
+	final_ratio = 0.42 if is_clockwise else 0.58
 	progress = clamp((completed_turns - 1) / 4.0, 0.0, 1.0)
 	return blend(start_ratio, final_ratio, progress)
 
@@ -246,30 +246,8 @@ def get_sector_turn_duration_ms(completed_turns):
 	progress = clamp((completed_turns - 1) / 4.0, 0.0, 1.0)
 	return blend(start_duration_ms, min_duration_ms, progress)
 
-TURN_GUARD_LINE_NAME = "Turn Guard Line"
-turn_guard_line_start = None
-turn_guard_line_end = None
-turn_guard_window_fraction = 1 / 1.5
-
-def set_turn_guard_line(is_clockwise):
-	global turn_guard_line_start, turn_guard_line_end
-	line_x = video_size[0] - 7 if is_clockwise else 7
-	turn_guard_line_start = (line_x, 115)
-	turn_guard_line_end = (line_x, 223)
-	add_marker_line(
-		TURN_GUARD_LINE_NAME,
-		turn_guard_line_start[0],
-		turn_guard_line_start[1],
-		turn_guard_line_end[0],
-		turn_guard_line_end[1],
-		color=(0, 255, 255),
-		thickness=2,
-		label="Turn Guard",
-	)
-
-
 # Checkpoints (default as clockwise case)
-front_point = [200, 85]
+front_point = [200, 115]
 add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
 left_turning_point = [5, 200] #check direction
 add_marker_point("Left Turning Point", left_turning_point[0], left_turning_point[1], color=(0, 0, 255), radius=2, label="Left TP")
@@ -328,9 +306,6 @@ try:
                                 turning_point = right_turning_point
                                 state = States.FIRST_SECTOR
                                 last_state = None
-                                turn_guard_line_start = None
-                                turn_guard_line_end = None
-                                turn_guard_window_fraction = 1 / 1.5
                                 clear_marker_points()
                                 clear_marker_lines()
                                 # Checkpoints (default as clockwise case)
@@ -376,25 +351,15 @@ try:
                                 		if num_of_turn == 0:
                                 			if get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]:
                                 				is_clockwise = True
-                                				# front_point = [140, 80]
                                 				remove_marker("Anticlockwise Indicator")
-                                				innerwall_white = [335, 220]
-                                				innerwall_black = [365, 220]
                                 				turning_point = right_turning_point
                                 			else:
                                 				is_clockwise = False
-                                				# front_point = [260, 80]
                                 				remove_marker("Clockwise Indicator")
-                                				innerwall_white = [65, 220]
-                                				innerwall_black = [35, 220]
                                 				turning_point = left_turning_point
                                 			add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
-                                			add_marker_point("Innerwall White", innerwall_white[0], innerwall_white[1], color=(0, 0, 255), radius=3, label="Danger")
-                                			add_marker_point("Innerwall Black", innerwall_black[0], innerwall_black[1], color=(255, 0, 0), radius=3, label="Safe")
-                                			set_turn_guard_line(is_clockwise)
                                 			is_clockwise = get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]
                                 			previous_wall_error = 0.0
-                                			turn_guard_window_fraction = 1 / 1.5
                                 		start_turning_time = time.perf_counter_ns()
                                 		state = States.TURNING_STATE
                                 		continue
@@ -407,25 +372,6 @@ try:
                                 	turn_elapsed_ms = (time.perf_counter_ns() - start_turning_time) / 1000000
                                 	blind_turn_duration_ms = get_sector_turn_duration_ms(num_of_turn)
                                 	front_sees_track = get_track_distance(front_point[0], front_point[1])[0]
-                                	guard_line_hits_non_track = False
-                                	if turn_guard_line_start is not None and turn_guard_line_end is not None:
-                                		guard_line_hits_non_track = draw_and_check_line(
-                                			TURN_GUARD_LINE_NAME,
-                                			turn_guard_line_start,
-                                			turn_guard_line_end,
-                                			color=(0, 255, 255),
-                                			thickness=2,
-                                			label="Turn Guard",
-                                			track_polygon=track["polygon"],
-                                		)
-                                	if turn_elapsed_ms < (blind_turn_duration_ms * turn_guard_window_fraction) and guard_line_hits_non_track:
-                                		escape_steering = -50 if is_clockwise else 50
-                                		send_command_logged(str(speed) + ", " + str(escape_steering) + ", -1, turn guard escape")
-                                		time.sleep(0.2)
-                                		turn_guard_window_fraction *= 0.5
-                                		start_turning_time = time.perf_counter_ns()
-                                		previous_wall_error = 0.0
-                                		continue
                                 	if turn_elapsed_ms < blind_turn_duration_ms or not front_sees_track:
                                 		steering = 100 if is_clockwise else -100
                                 		esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-in")
@@ -436,7 +382,7 @@ try:
                                 		is_clockwise,
                                 		previous_wall_error,
                                 		recovery_mode=True,
-                                		target_ratio_override=(0.52 if is_clockwise else 0.48),
+                                		target_ratio_override=(0.48 if is_clockwise else 0.52),
                                 	)
                                 	if profile is None:
                                 		steering = 55 if is_clockwise else -55
@@ -477,10 +423,9 @@ try:
 
                                 # Run sector and keep a certain distance from the inner barrier
                                 elif state == States.RUN_SECTOR_STATE:
-                                	if get_track_distance(front_point[0], front_point[1])[0] == False and (get_track_distance(turning_point[0], turning_point[1])[0] == True):
+                                	if get_track_distance(front_point[0], front_point[1])[0] == False:
                                         	state = States.TURNING_STATE
                                         	previous_wall_error = 0.0
-                                        	turn_guard_window_fraction = 1 / 1.5
                                         	start_turning_time = time.perf_counter_ns()
                                         	continue
                                 	target_ratio = get_sector_target_ratio(is_clockwise, num_of_turn)
@@ -490,13 +435,6 @@ try:
                                 		previous_wall_error,
                                 		target_ratio_override=target_ratio,
                                 	)
-                                	if profile is None:
-                                		if not get_track_distance(innerwall_white[0], innerwall_white[1])[0]:
-                                			steering = -50 if is_clockwise else 50
-                                		elif get_track_distance(innerwall_black[0], innerwall_black[1])[0]:
-                                			steering = 5 if is_clockwise else -5
-                                		else:
-                                			steering = 0
                                 	esp.send_command(str(speed) + ", " + str(steering) + ", -1, wall follow")
                                 	continue
 
