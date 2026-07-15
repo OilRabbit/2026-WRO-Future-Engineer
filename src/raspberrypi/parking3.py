@@ -64,36 +64,34 @@ target_done = False
 run_target_sent = False
 
 # ==================================================================
-# CONFIGURATION PARAMETERS
+# CONFIGURATION PARAMETERS (Scaled down by 0.625 for 400x225 resolution)
 # ==================================================================
-PROBE_Y = 72
-PROBE_LEFT_X = 220
-PROBE_RIGHT_X = 248
-FRONT_EDGE_Y_MIN = 62
-FRONT_EDGE_Y_MAX = 95
-TOUCH_POINT_X = 169
-TOUCH_POINT_Y = 86
-STOP_DISTANCE_THRESHOLD = 1.0
-APPROACH_SPEED = 5
+PROBE_Y_FORWARD = 85
+PROBE_LEFT_X_FORWARD = 200
+PROBE_RIGHT_X_FORWARD = 225
 
-KP = 30
+TARGET_DIST = 1.0
+MIN_STOP_DIST = 0.9
+MAX_STOP_DIST = 1.1
+
+KP_SPEED = 4.0
+KP = 40
 KD = 1.2
-KP_ANGLE = 2.8
-KD_ANGLE = 0.9
 
 last_alignment_error = 0.0
-last_direction = None          
-oscillation_count = 0          
+last_direction = None
+oscillation_count = 0
 
 class ParkingStates(Enum):
-    BLACK_WALL_PD_APPROACH = 0 
-    COMPLETED = 1              
-    RIGHT_TURN_90 = 2          
-    STEERING_REALIGN = 3       
-    BACKWARD_ENCODER_MOVE = 4  
-    FINAL_TURN_90 = 5          
-    REAR_SAFETY_BACKOFF = 6    
-    FINAL_CORRECTION_TURN = 7  
+    BLACK_WALL_PD_APPROACH = 0
+    COMPLETED = 1
+    RIGHT_TURN_90 = 2
+    STEERING_REALIGN = 3
+    BACKWARD_ENCODER_MOVE = 4
+    FINAL_TURN_90 = 5
+    REAR_SAFETY_BACKOFF = 6
+    FINAL_CORRECTION_TURN = 7
+    FINAL_CORRECTION_TURN2 = 8
 
 def clamp(value, minimum, maximum):
     return max(minimum, min(maximum, value))
@@ -113,31 +111,7 @@ def esp_replyNprint():
             return reply
     except Exception as e:
         print(f"\n[SERIAL WARNING] Caught hardware communication glitch: {e}")
-        print("Attempting to bypass frame drop...")
     return None
-
-def get_front_edge_angle(track_polygon, y_min=FRONT_EDGE_Y_MIN, y_max=FRONT_EDGE_Y_MAX):
-    if track_polygon is None:
-        return None
-
-    pts = track_polygon.reshape(-1, 2)
-    roi_pts = []
-    for x, y in pts:
-        if y_min <= y <= y_max:
-            roi_pts.append([float(x), float(y)])
-
-    if len(roi_pts) < 5:
-        return None
-
-    roi_pts = np.array(roi_pts, dtype=np.float32)
-    vx, vy, _, _ = cv2.fitLine(roi_pts, cv2.DIST_L2, 0, 0.01, 0.01)
-    angle_deg = math.degrees(math.atan2(float(vy), float(vx)))
-
-    while angle_deg > 90:
-        angle_deg -= 180
-    while angle_deg < -90:
-        angle_deg += 180
-    return angle_deg
 
 oc1_parking_state = ParkingStates.BLACK_WALL_PD_APPROACH
 
@@ -170,48 +144,57 @@ try:
                 # CONTINUOUS PD APPROACH WITH OSCILLATION SAFETIES
                 # ==================================================================
                 if oc1_parking_state == ParkingStates.BLACK_WALL_PD_APPROACH:
-                    _, _, track = get_latest_data()
-                    touch_inside, touch_dist = get_track_distance(TOUCH_POINT_X, TOUCH_POINT_Y)
-                    edge_angle = get_front_edge_angle(track.get("polygon"))
+                    has_poly_l, dist_left = get_track_distance(PROBE_LEFT_X_FORWARD, PROBE_Y_FORWARD)
+                    has_poly_r, dist_right = get_track_distance(PROBE_RIGHT_X_FORWARD, PROBE_Y_FORWARD)
 
-                    print(f"[TOUCH POINT ({TOUCH_POINT_X}, {TOUCH_POINT_Y})] Inside Poly: {int(touch_inside)} | Distance to Edge: {touch_dist:.2f}")
-                    if edge_angle is not None:
-                        print(f"[FRONT EDGE ANGLE] {edge_angle:+.2f} deg")
+                    if dist_left is None or dist_right is None or dist_left == 0 or dist_right == 0:
+                        last_alignment_error = 0.0
+                        send_command_logged("5.0, 0, 0, fallback probe search")
+                        print(f"[FALLBACK EDGE PID] Probe distance missing or uninitialized. Speed: 5.0 | Steer: 0\n")
+                        time.sleep(0.02)
+                        continue
 
-                    if touch_dist < STOP_DISTANCE_THRESHOLD:
+                    dist_left = dist_left + 0.1
+
+                    print(f"[PROBE LEFT  ({PROBE_LEFT_X_FORWARD}, {PROBE_Y_FORWARD})] Distance: {dist_left:.2f}")
+                    print(f"[PROBE RIGHT ({PROBE_RIGHT_X_FORWARD}, {PROBE_Y_FORWARD})] Distance: {dist_right:.2f}")
+
+                    if (MIN_STOP_DIST <= dist_left <= MAX_STOP_DIST) and \
+                       (MIN_STOP_DIST <= dist_right <= MAX_STOP_DIST):
+
                         send_command_logged("0, 0, 0, R")
                         oc1_parking_state = ParkingStates.COMPLETED
                         run_target_sent = False
                         target_done = False
-                        print("skip")
                         continue
 
-                    if edge_angle is not None:
-                        alignment_error = edge_angle
-                        derivative = alignment_error - last_alignment_error
-                        pd_steering = int(clamp(-(KP_ANGLE * alignment_error) - (KD_ANGLE * derivative) - 12, -55, 55))
-                        last_alignment_error = alignment_error
-                        send_command_logged(f"{APPROACH_SPEED}, {pd_steering}, 0, front edge line align")
-                        print(f"[EDGE PID] Edge Angle Error: {alignment_error:+.2f} deg | Speed: {APPROACH_SPEED:.2f} | Steer: {pd_steering}\n")
-                    else:
-                        has_poly_l, dist_left = get_track_distance(PROBE_LEFT_X, PROBE_Y)
-                        has_poly_r, dist_right = get_track_distance(PROBE_RIGHT_X, PROBE_Y)
-                        if dist_left is None or dist_right is None:
-                            last_alignment_error = 0.0
-                            print(f"[FALLBACK PROBE LEFT  ({PROBE_LEFT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_l)} | Distance to Edge: {dist_left}")
-                            print(f"[FALLBACK PROBE RIGHT ({PROBE_RIGHT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_r)} | Distance to Edge: {dist_right}")
-                            send_command_logged(f"{APPROACH_SPEED}, 0, 0, fallback probe search")
-                            print(f"[FALLBACK EDGE PID] Probe distance missing. Speed: {APPROACH_SPEED:.2f} | Steer: 0\n")
-                        else:
-                            dist_left = dist_left + 0.6
-                            print(f"[FALLBACK PROBE LEFT  ({PROBE_LEFT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_l)} | Distance to Edge: {dist_left:.2f}")
-                            print(f"[FALLBACK PROBE RIGHT ({PROBE_RIGHT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_r)} | Distance to Edge: {dist_right:.2f}")
-                            alignment_error = dist_left - dist_right
-                            derivative = alignment_error - last_alignment_error
-                            pd_steering = int(clamp((KP * alignment_error) + (KD * derivative), -55, 55))
-                            last_alignment_error = alignment_error
-                            send_command_logged(f"{APPROACH_SPEED}, {pd_steering}, 0, fallback probe align")
-                            print(f"[FALLBACK EDGE PID] Alignment Error: {alignment_error:+.2f} | Speed: {APPROACH_SPEED:.2f} | Steer: {pd_steering}\n")
+                    mean_distance = (dist_left + dist_right) / 2.0
+                    dist_error = mean_distance - TARGET_DIST
+
+                    current_direction = 1 if dist_error >= 0 else -1
+                    if last_direction is not None and current_direction != last_direction:
+                        oscillation_count += 1
+                        if oscillation_count >= 2:
+                            send_command_logged("0, 0, 0, R")
+                            oc1_parking_state = ParkingStates.COMPLETED
+                            run_target_sent = False
+                            target_done = False
+                            continue
+
+                    last_direction = current_direction
+                    base_speed = float(clamp(dist_error * KP_SPEED, -6.0, 6.0))
+                    speed_mode = "smooth forward approach" if base_speed >= 0 else "smooth overshoot backing"
+
+                    alignment_error = dist_left - dist_right
+                    derivative = alignment_error - last_alignment_error
+
+                    pd_steering = int(clamp((KP * alignment_error) + (KD * derivative), -55, 55))
+                    last_alignment_error = alignment_error
+
+                    if base_speed < 0:
+                        pd_steering = -pd_steering
+
+                    send_command_logged(f"{base_speed:.1f}, {pd_steering}, 0, {speed_mode}")
 
                 # ==================================================================
                 # STANDBY COMPLETED HOLDING STATE
@@ -220,7 +203,6 @@ try:
                     oc1_parking_state = ParkingStates.RIGHT_TURN_90
                     run_target_sent = False
                     target_done = False
-                    print("skip complete")
                     continue
 
                 # ==================================================================
@@ -228,7 +210,7 @@ try:
                 # ==================================================================
                 elif oc1_parking_state == ParkingStates.RIGHT_TURN_90:
                     if run_target_sent == False:
-                        send_command_logged("-8.5, 95, 61, forward target")
+                        send_command_logged("-6, 100, 63, forward target")
                         run_target_sent = True
                         target_done = False
 
@@ -236,11 +218,10 @@ try:
                         time.sleep(0.001)
                         continue
                     else:
-                        send_command_logged("0, 0, 0, R") 
+                        send_command_logged("0, 0, 0, R")
                         oc1_parking_state = ParkingStates.STEERING_REALIGN
                         run_target_sent = False
                         target_done = False
-                        print("skip steering")
                         continue
 
                 # ==================================================================
@@ -248,8 +229,8 @@ try:
                 # ==================================================================
                 elif oc1_parking_state == ParkingStates.STEERING_REALIGN:
                     send_command_logged("0, -30, 0, friction break pulse")
-                    time.sleep(0.15)  
-                    send_command_logged("0, 0, 0, R") 
+                    time.sleep(0.15)
+                    send_command_logged("0, 0, 0, R")
                     oc1_parking_state = ParkingStates.BACKWARD_ENCODER_MOVE
                     continue
 
@@ -258,7 +239,7 @@ try:
                 # ==================================================================
                 elif oc1_parking_state == ParkingStates.BACKWARD_ENCODER_MOVE:
                     if run_target_sent == False:
-                        send_command_logged("-8.5, 0, 72, forward target")
+                        send_command_logged("-6, 0, 64, forward target")
                         run_target_sent = True
                         target_done = False
 
@@ -277,7 +258,7 @@ try:
                 # ==================================================================
                 elif oc1_parking_state == ParkingStates.FINAL_TURN_90:
                     if run_target_sent == False:
-                        send_command_logged("8.5, 100, 45, forward target")
+                        send_command_logged("6, 100, 37, forward target")
                         run_target_sent = True
                         target_done = False
 
@@ -286,7 +267,7 @@ try:
                         continue
                     else:
                         send_command_logged("0, -30, 0, friction break pulse")
-                        time.sleep(0.15) 
+                        time.sleep(0.15)
                         send_command_logged("0, 0, 0, R")
                         oc1_parking_state = ParkingStates.REAR_SAFETY_BACKOFF
                         run_target_sent = False
@@ -298,8 +279,7 @@ try:
                 # ==================================================================
                 elif oc1_parking_state == ParkingStates.REAR_SAFETY_BACKOFF:
                     if run_target_sent == False:
-                        # Target updated from 18 to 16 Ticks
-                        send_command_logged("-8.5, -30, 16, forward target")
+                        send_command_logged("-6, -30, 13, forward target")
                         run_target_sent = True
                         target_done = False
 
@@ -318,7 +298,7 @@ try:
                 # ==================================================================
                 elif oc1_parking_state == ParkingStates.FINAL_CORRECTION_TURN:
                     if run_target_sent == False:
-                        send_command_logged("-8.5, -100, 47, forward target")
+                        send_command_logged("-6, -100, 38, forward target")
                         run_target_sent = True
                         target_done = False
 
@@ -326,15 +306,39 @@ try:
                         time.sleep(0.001)
                         continue
                     else:
-                        # HIGH-DYNAMIC DE-SHACKLE ROUTINE:
                         print("[SHAKE RESET] Hard flick right to release servo linkage compression...")
                         send_command_logged("0, 60, 0, dynamic shake right")
                         time.sleep(0.18)
-                        
+                        target_done = False
+                        run_target_sent = False
                         print("[SHAKE RESET] Command true center...")
                         send_command_logged("0, 0, 0, straight hold")
                         time.sleep(0.10)
-                        
+
+                        send_command_logged("0, 0, 0, R")
+                        print("[SUCCESS] Hardware steering alignment cleared dynamically.")
+
+                        oc1_parking_state = ParkingStates.FINAL_CORRECTION_TURN2
+                        continue
+
+                elif oc1_parking_state == ParkingStates.FINAL_CORRECTION_TURN2:
+                    if run_target_sent == False:
+                        send_command_logged("6, 100, 3, forward target")
+                        run_target_sent = True
+                        target_done = False
+
+                    if not target_done:
+                        time.sleep(0.001)
+                        continue
+                    else:
+                        print("[SHAKE RESET] Hard flick right to release servo linkage compression...")
+                        send_command_logged("0, -60, 0, dynamic shake right")
+                        time.sleep(0.18)
+
+                        print("[SHAKE RESET] Command true center...")
+                        send_command_logged("0, 0, 0, straight hold")
+                        time.sleep(0.10)
+
                         send_command_logged("0, 0, 0, R")
                         print("[SUCCESS] Hardware steering alignment cleared dynamically.")
                         run_OC1 = False
