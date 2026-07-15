@@ -249,6 +249,7 @@ def get_sector_turn_duration_ms(completed_turns):
 TURN_GUARD_LINE_NAME = "Turn Guard Line"
 turn_guard_line_start = None
 turn_guard_line_end = None
+turn_guard_window_fraction = 1 / 2.5
 
 def set_turn_guard_line(is_clockwise):
 	global turn_guard_line_start, turn_guard_line_end
@@ -329,6 +330,7 @@ try:
                                 last_state = None
                                 turn_guard_line_start = None
                                 turn_guard_line_end = None
+                                turn_guard_window_fraction = 1 / 2.5
                                 clear_marker_points()
                                 clear_marker_lines()
                                 # Checkpoints (default as clockwise case)
@@ -392,6 +394,7 @@ try:
                                 			set_turn_guard_line(is_clockwise)
                                 			is_clockwise = get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]
                                 			previous_wall_error = 0.0
+                                			turn_guard_window_fraction = 1 / 2.5
                                 		start_turning_time = time.perf_counter_ns()
                                 		state = States.TURNING_STATE
                                 		continue
@@ -415,10 +418,11 @@ try:
                                 			label="Turn Guard",
                                 			track_polygon=track["polygon"],
                                 		)
-                                	if turn_elapsed_ms < (blind_turn_duration_ms / 2.5) and guard_line_hits_non_track:
+                                	if turn_elapsed_ms < (blind_turn_duration_ms * turn_guard_window_fraction) and guard_line_hits_non_track:
                                 		escape_steering = -50 if is_clockwise else 50
                                 		send_command_logged(str(speed) + ", " + str(escape_steering) + ", -1, turn guard escape")
                                 		time.sleep(0.2)
+                                		turn_guard_window_fraction *= 0.5
                                 		start_turning_time = time.perf_counter_ns()
                                 		previous_wall_error = 0.0
                                 		continue
@@ -476,6 +480,7 @@ try:
                                 	if get_track_distance(front_point[0], front_point[1])[0] == False and (get_track_distance(turning_point[0], turning_point[1])[0] == True):
                                         	state = States.TURNING_STATE
                                         	previous_wall_error = 0.0
+                                        	turn_guard_window_fraction = 1 / 2.5
                                         	start_turning_time = time.perf_counter_ns()
                                         	continue
                                 	target_ratio = get_sector_target_ratio(is_clockwise, num_of_turn)
