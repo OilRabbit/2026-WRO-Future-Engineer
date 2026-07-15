@@ -221,7 +221,7 @@ def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, re
 		kd = 0.55
 		max_steer = 55
 	else:
-		kp = 0.60
+		kp = 0.55
 		kd = 0.65
 		max_steer = 65
 
@@ -252,7 +252,7 @@ turn_guard_line_end = None
 
 def set_turn_guard_line(is_clockwise):
 	global turn_guard_line_start, turn_guard_line_end
-	line_x = video_size[0] - 5 if is_clockwise else 5
+	line_x = video_size[0] - 7 if is_clockwise else 7
 	turn_guard_line_start = (line_x, 115)
 	turn_guard_line_end = (line_x, 223)
 	add_marker_line(
@@ -362,6 +362,7 @@ try:
                                         break
                                 set_color_block_detection(False, False, False)
                                 _, _, track = get_latest_data()
+                                print("num turn = {}".format(num_of_turn))
 
                                 if last_state != state:
                                 	print(f"\n[{state.name}]")
@@ -414,10 +415,10 @@ try:
                                 			label="Turn Guard",
                                 			track_polygon=track["polygon"],
                                 		)
-                                	if turn_elapsed_ms < (blind_turn_duration_ms / 4.0) and guard_line_hits_non_track:
-                                		escape_steering = -100 if is_clockwise else 100
+                                	if turn_elapsed_ms < (blind_turn_duration_ms / 2.5) and guard_line_hits_non_track:
+                                		escape_steering = -50 if is_clockwise else 50
                                 		send_command_logged(str(speed) + ", " + str(escape_steering) + ", -1, turn guard escape")
-                                		time.sleep(0.3)
+                                		time.sleep(0.2)
                                 		start_turning_time = time.perf_counter_ns()
                                 		previous_wall_error = 0.0
                                 		continue
