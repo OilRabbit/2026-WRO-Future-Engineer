@@ -4,7 +4,7 @@ import time
 import datetime
 import math
 from esp_com.communication import ESP32Communicator
-from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance, set_marker_point, remove_marker_point, clear_marker_points, set_color_detection, set_all_color_detection, configure_vision_pipeline
+from camera.camera_utils import start_vision_system, start_web_server, get_latest_data, stop_vision_system, get_track_distance, set_marker_point, remove_marker_point, clear_marker_points, set_marker_line, remove_marker_line, clear_marker_lines, set_color_detection, set_all_color_detection, configure_vision_pipeline
 from picamera2 import Picamera2 as picam2
 from enum import Enum
 
@@ -80,6 +80,12 @@ def add_marker_point(name, x, y, color=(0, 255, 255), radius=5, label=None):
 def remove_marker(name):
 	remove_marker_point(name)
 
+def add_marker_line(name, x1, y1, x2, y2, color=(0, 255, 255), thickness=2, label=None):
+	set_marker_line(name, x1, y1, x2, y2, color=color, thickness=thickness, label=label)
+
+def remove_line(name):
+	remove_marker_line(name)
+
 def set_red_detection(enabled):
 	set_color_detection("red", enabled)
 
@@ -116,6 +122,32 @@ def clamp(value, minimum, maximum):
 def blend(start, end, progress):
 	progress = clamp(progress, 0.0, 1.0)
 	return start + (end - start) * progress
+
+def draw_and_check_line(name, start_point, end_point, color=(0, 255, 255), thickness=2, label=None, sample_spacing=2, track_polygon=None):
+	add_marker_line(name, start_point[0], start_point[1], end_point[0], end_point[1], color=color, thickness=thickness, label=label)
+
+	if track_polygon is None:
+		_, _, track = get_latest_data()
+		track_polygon = track["polygon"]
+	if track_polygon is None:
+		return True
+
+	x1, y1 = start_point
+	x2, y2 = end_point
+	delta_x = x2 - x1
+	delta_y = y2 - y1
+	line_length = math.hypot(delta_x, delta_y)
+	if line_length == 0:
+		return cv2.pointPolygonTest(track_polygon, (float(x1), float(y1)), False) < 0
+
+	sample_count = max(2, int(line_length / max(1, sample_spacing)) + 1)
+	for step in range(sample_count):
+		progress = step / (sample_count - 1)
+		x = x1 + (delta_x * progress)
+		y = y1 + (delta_y * progress)
+		if cv2.pointPolygonTest(track_polygon, (float(x), float(y)), False) < 0:
+			return True
+	return False
 
 def find_track_edge_x(track_polygon, row_y, scan_from_left, coarse_step=6):
 	if track_polygon is None:
@@ -214,6 +246,26 @@ def get_sector_turn_duration_ms(completed_turns):
 	progress = clamp((completed_turns - 1) / 4.0, 0.0, 1.0)
 	return blend(start_duration_ms, min_duration_ms, progress)
 
+TURN_GUARD_LINE_NAME = "Turn Guard Line"
+turn_guard_line_start = None
+turn_guard_line_end = None
+
+def set_turn_guard_line(is_clockwise):
+	global turn_guard_line_start, turn_guard_line_end
+	line_x = video_size[0] - 5 if is_clockwise else 5
+	turn_guard_line_start = (line_x, 115)
+	turn_guard_line_end = (line_x, 223)
+	add_marker_line(
+		TURN_GUARD_LINE_NAME,
+		turn_guard_line_start[0],
+		turn_guard_line_start[1],
+		turn_guard_line_end[0],
+		turn_guard_line_end[1],
+		color=(0, 255, 255),
+		thickness=2,
+		label="Turn Guard",
+	)
+
 
 # Checkpoints (default as clockwise case)
 front_point = [200, 85]
@@ -275,7 +327,10 @@ try:
                                 turning_point = right_turning_point
                                 state = States.FIRST_SECTOR
                                 last_state = None
+                                turn_guard_line_start = None
+                                turn_guard_line_end = None
                                 clear_marker_points()
+                                clear_marker_lines()
                                 # Checkpoints (default as clockwise case)
                                 # front_point = [200, 105]
                                 add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
@@ -333,6 +388,7 @@ try:
                                 			add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
                                 			add_marker_point("Innerwall White", innerwall_white[0], innerwall_white[1], color=(0, 0, 255), radius=3, label="Danger")
                                 			add_marker_point("Innerwall Black", innerwall_black[0], innerwall_black[1], color=(255, 0, 0), radius=3, label="Safe")
+                                			set_turn_guard_line(is_clockwise)
                                 			is_clockwise = get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]
                                 			previous_wall_error = 0.0
                                 		start_turning_time = time.perf_counter_ns()
@@ -347,6 +403,24 @@ try:
                                 	turn_elapsed_ms = (time.perf_counter_ns() - start_turning_time) / 1000000
                                 	blind_turn_duration_ms = get_sector_turn_duration_ms(num_of_turn)
                                 	front_sees_track = get_track_distance(front_point[0], front_point[1])[0]
+                                	guard_line_hits_non_track = False
+                                	if turn_guard_line_start is not None and turn_guard_line_end is not None:
+                                		guard_line_hits_non_track = draw_and_check_line(
+                                			TURN_GUARD_LINE_NAME,
+                                			turn_guard_line_start,
+                                			turn_guard_line_end,
+                                			color=(0, 255, 255),
+                                			thickness=2,
+                                			label="Turn Guard",
+                                			track_polygon=track["polygon"],
+                                		)
+                                	if turn_elapsed_ms < (blind_turn_duration_ms / 4.0) and guard_line_hits_non_track:
+                                		escape_steering = -100 if is_clockwise else 100
+                                		send_command_logged(str(speed) + ", " + str(escape_steering) + ", -1, turn guard escape")
+                                		time.sleep(0.3)
+                                		start_turning_time = time.perf_counter_ns()
+                                		previous_wall_error = 0.0
+                                		continue
                                 	if turn_elapsed_ms < blind_turn_duration_ms or not front_sees_track:
                                 		steering = 100 if is_clockwise else -100
                                 		esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-in")

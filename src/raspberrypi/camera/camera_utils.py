@@ -24,6 +24,7 @@ track_data = {"polygon": None, "center_x": 0, "center_y": 0}
 
 _display_masks = {"red": None, "green": None, "magenta": None, "white": None}
 _marker_points = {}
+_marker_lines = {}
 _detection_flags = {"red": True, "green": True, "magenta": True}
 _vision_config = {
 	"draw_overlays": True,
@@ -217,6 +218,26 @@ def clear_marker_points():
 	with _data_lock:
 		_marker_points.clear()
 
+def set_marker_line(name, x1, y1, x2, y2, color=(0, 255, 255), thickness=2, label=None):
+	with _data_lock:
+		_marker_lines[name] = {
+			"x1": int(x1),
+			"y1": int(y1),
+			"x2": int(x2),
+			"y2": int(y2),
+			"color": tuple(int(channel) for channel in color),
+			"thickness": int(thickness),
+			"label": label if label is not None else str(name),
+		}
+
+def remove_marker_line(name):
+	with _data_lock:
+		_marker_lines.pop(name, None)
+
+def clear_marker_lines():
+	with _data_lock:
+		_marker_lines.clear()
+
 def set_color_detection(color_name, enabled):
 	with _data_lock:
 		if color_name not in _detection_flags:
@@ -298,6 +319,7 @@ def _vision_loop():
 			mag = parkinglot_data.copy()
 			trk = track_data.copy()
 			markers = list(_marker_points.values())
+			lines = list(_marker_lines.values())
 
 		needs_display = (
 			config["draw_overlays"]
@@ -332,6 +354,14 @@ def _vision_loop():
 				cv2.circle(display_frame, point, marker["radius"], marker["color"], marker["thickness"])
 				if marker["label"]:
 					cv2.putText(display_frame, marker["label"], (point[0] + 8, point[1] - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, marker["color"], 1)
+			for line in lines:
+				start = (line["x1"], line["y1"])
+				end = (line["x2"], line["y2"])
+				cv2.line(display_frame, start, end, line["color"], line["thickness"])
+				if line["label"]:
+					label_x = (line["x1"] + line["x2"]) // 2
+					label_y = (line["y1"] + line["y2"]) // 2
+					cv2.putText(display_frame, line["label"], (label_x + 8, label_y - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.45, line["color"], 1)
 
 		debug_output = display_frame
 		if config["show_debug_strip"]:
