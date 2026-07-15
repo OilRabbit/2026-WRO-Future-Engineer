@@ -250,6 +250,9 @@ def get_sector_turn_duration_ms(completed_turns):
 	progress = clamp((completed_turns - 1) / 4.0, 0.0, 1.0)
 	return blend(start_duration_ms, min_duration_ms, progress)
 
+def get_recovery_duration_ms():
+	return 500 * 6 / speed
+
 # Checkpoints (default as clockwise case)
 front_point = [200, 98]
 add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
@@ -275,6 +278,7 @@ num_of_turn = 0
 is_clockwise = True
 previous_wall_error = 0.0
 dash_start_time = 0.0
+recovery_start_time = 0.0
 start_time = 0
 end_time = 0
 recorded_time = 0
@@ -307,6 +311,7 @@ try:
                                 is_clockwise = True
                                 previous_wall_error = 0.0
                                 dash_start_time = 0.0
+                                recovery_start_time = 0.0
                                 turning_point = right_turning_point
                                 state = States.FIRST_SECTOR
                                 last_state = None
@@ -365,6 +370,7 @@ try:
                                 			is_clockwise = get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]
                                 			previous_wall_error = 0.0
                                 		start_turning_time = time.perf_counter_ns()
+                                		recovery_start_time = 0.0
                                 		state = States.TURNING_STATE
                                 		continue
                                 	else:
@@ -381,6 +387,9 @@ try:
                                 		esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-in")
                                 		continue
 
+                                	if recovery_start_time == 0.0:
+                                		recovery_start_time = time.perf_counter()
+
                                 	steering, previous_wall_error, profile = compute_wall_follow_steering(
                                 		track["polygon"],
                                 		is_clockwise,
@@ -392,13 +401,20 @@ try:
                                 		steering = 55 if is_clockwise else -55
                                 	esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-align")
 
+                                	recovery_elapsed_ms = (time.perf_counter() - recovery_start_time) * 1000
+
                                 	if turn_elapsed_ms < 1100:
                                 		continue
 
-                                	if profile is not None and abs(profile["error"]) <= 18:
+                                	if (
+                                		profile is not None
+                                		and abs(profile["error"]) <= 18
+                                		and recovery_elapsed_ms >= get_recovery_duration_ms()
+                                	):
                                 		num_of_turn += 1
                                 		print("num turn: {}".format(num_of_turn))
                                 		dash_start_time = time.perf_counter()
+                                		recovery_start_time = 0.0
                                 		state = States.DASH_AFTER_TURNING_STATE
                                 		continue
 
@@ -408,6 +424,7 @@ try:
                                 	num_of_turn += 1
                                 	print("num turn: {}".format(num_of_turn))
                                 	dash_start_time = time.perf_counter()
+                                	recovery_start_time = 0.0
                                 	state = States.DASH_AFTER_TURNING_STATE
                                 	continue
                                 
@@ -430,6 +447,7 @@ try:
                                 	if get_track_distance(front_point[0], front_point[1])[0] == False:
                                         	state = States.TURNING_STATE
                                         	previous_wall_error = 0.0
+                                        	recovery_start_time = 0.0
                                         	start_turning_time = time.perf_counter_ns()
                                         	continue
                                 	target_ratio = get_sector_target_ratio(is_clockwise, num_of_turn)
