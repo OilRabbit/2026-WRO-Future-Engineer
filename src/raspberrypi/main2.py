@@ -217,13 +217,13 @@ def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, re
 	error_delta = error - previous_error
 
 	if recovery_mode:
-		kp = 0.45
-		kd = 0.55
-		max_steer = 55
+		kp = 0.25
+		kd = 0.35
+		max_steer = 30
 	else:
-		kp = 0.55
-		kd = 0.65
-		max_steer = 65
+		kp = 0.25
+		kd = 0.35
+		max_steer = 30
 
 	steering = (kp * error) + (kd * error_delta)
 	steering = int(round(clamp(steering, -max_steer, max_steer)))
@@ -233,8 +233,8 @@ def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, re
 	return steering, error, profile
 
 def get_sector_target_ratio(is_clockwise, completed_turns):
-	start_ratio = 0.48 if is_clockwise else 0.52
-	final_ratio = 0.42 if is_clockwise else 0.58
+	start_ratio = 0.46 if is_clockwise else 0.54
+	final_ratio = 0.46 if is_clockwise else 0.54
 	progress = clamp((completed_turns - 1) / 4.0, 0.0, 1.0)
 	return blend(start_ratio, final_ratio, progress)
 
@@ -247,7 +247,7 @@ def get_sector_turn_duration_ms(completed_turns):
 	return blend(start_duration_ms, min_duration_ms, progress)
 
 # Checkpoints (default as clockwise case)
-front_point = [200, 115]
+front_point = [200, 98]
 add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
 left_turning_point = [5, 200] #check direction
 add_marker_point("Left Turning Point", left_turning_point[0], left_turning_point[1], color=(0, 0, 255), radius=2, label="Left TP")
@@ -416,7 +416,7 @@ try:
                                 		target_ratio_override=target_ratio,
                                 	)
                                 	esp.send_command(str(speed) + ", " + str(steering) + ", -1, settle after turn")
-                                	if time.perf_counter() - dash_start_time < 0.35:
+                                	if time.perf_counter() - dash_start_time < 0.3:
                                 		continue
                                 	state = States.RUN_SECTOR_STATE if num_of_turn < 12 else States.LAST_RUN
                                 	continue
