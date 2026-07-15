@@ -70,19 +70,19 @@ PURPLE_TARGET_X = 310
 PURPLE_ALIGN_SPEED = 5
 PURPLE_STOP_THRESHOLD = 61.5
 
-PROBE_Y = 77                  # Fixed vertical look-ahead line
-PROBE_LEFT_X = 170             # Inward adjusted left column
-PROBE_RIGHT_X = 189            # Inward adjusted right column
+PROBE_Y = 79                  # Fixed vertical look-ahead line
+PROBE_LEFT_X = 179             # Inward adjusted left column
+PROBE_RIGHT_X = 204            # Inward adjusted right column
 FRONT_EDGE_Y_MIN = 62
 FRONT_EDGE_Y_MAX = 95
-TOUCH_POINT_X = 169            # Smaller = further away from the parking lot. Larger = closer to the parking lot
-TOUCH_POINT_Y = 86
+TOUCH_POINT_X = 150            # Smaller = further away from the parking lot. Larger = closer to the parking lot
+TOUCH_POINT_Y = 77
 
 # STOPPING CONDITION
 STOP_DISTANCE_THRESHOLD = 1.0  # Stop walking forward when distance to edge < 1
 
 # PD Controller gains for steering alignment
-KP = 24
+KP = 16
 KD = 1.2
 KP_ANGLE = 2.8
 KD_ANGLE = 0.9
@@ -241,7 +241,7 @@ try:
                         # Fallback if the edge line cannot be fit reliably
                         has_poly_l, dist_left = get_track_distance(PROBE_LEFT_X, PROBE_Y)
                         has_poly_r, dist_right = get_track_distance(PROBE_RIGHT_X, PROBE_Y)
-                        dist_left = dist_left + 0.2
+                        dist_left = dist_left + 0.6
                         print(f"[FALLBACK PROBE LEFT  ({PROBE_LEFT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_l)} | Distance to Edge: {dist_left:.2f}")
                         print(f"[FALLBACK PROBE RIGHT ({PROBE_RIGHT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_r)} | Distance to Edge: {dist_right:.2f}")
                         alignment_error = dist_left - dist_right
@@ -307,7 +307,7 @@ try:
                     if run_target_sent == False:
                         steer = 100 if is_clockwise else -100
                         send_command_logged(f"0, 0, -1, stop")
-                        send_command_logged(f"-6, {steer}, 36, P")
+                        send_command_logged(f"-6, {steer}, 40, P")
                         run_target_sent = True
                         target_done = False
 
@@ -316,14 +316,14 @@ try:
                         continue
                     else:
                         send_command_logged("-1, 0, 0, R")
-                        oc1_parking_state = ParkingStates.BACKWARD_STRAIGHT
+                        oc1_parking_state = ParkingStates.COMPLETED
                         run_target_sent = False
                         target_done = False
                         continue
 
                 elif oc1_parking_state == ParkingStates.BACKWARD_STRAIGHT:
                     if run_target_sent == False:
-                        send_command_logged("6, 100, 13, forward target")
+                        send_command_logged("6, 50, 17, forward target")
                         run_target_sent = True
                         target_done = False
 
@@ -331,7 +331,7 @@ try:
                         time.sleep(0.001)
                         continue
                     else:
-                        send_command_logged("-1, -50, 0, R")
+                        send_command_logged("-1, 0, 0, R")
                         oc1_parking_state = ParkingStates.COMPLETED
                         run_target_sent = False
                         target_done = False
