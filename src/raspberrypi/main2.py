@@ -223,13 +223,13 @@ def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, re
 	error_delta = error - previous_error
 
 	if recovery_mode:
-		kp = 20.5
+		kp = 200000000000000.5
 		kd = 10.0
 		max_steer = 100 * speed / 6
 	else:
 		kp = 0.30
 		kd = 0.20
-		max_steer = 35 * speed / 6
+		max_steer = 30 * speed / 6
 
 	steering = (kp * error) + (kd * error_delta)
 	steering = int(round(clamp(steering, -max_steer, max_steer)))
@@ -251,7 +251,7 @@ def get_sector_turn_duration_ms(completed_turns):
 	return blend(start_duration_ms, min_duration_ms, progress)
 
 def get_recovery_duration_ms():
-	return 500 * 6 / speed
+	return 1000 * 6 / speed
 
 # Checkpoints (default as clockwise case)
 front_point = [200, 98]
@@ -348,7 +348,7 @@ try:
                                         break
                                 set_color_block_detection(False, False, False)
                                 _, _, track = get_latest_data()
-                                print("num turn = {}".format(num_of_turn))
+                                #print("num turn = {}".format(num_of_turn))
 
                                 if last_state != state:
                                 	print(f"\n[{state.name}]")
@@ -397,6 +397,7 @@ try:
                                 		recovery_mode=True,
                                 		target_ratio_override=(0.48 if is_clockwise else 0.52),
                                 	)
+
                                 	if profile is None:
                                 		steering = 55 if is_clockwise else -55
                                 	esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-align")
@@ -422,7 +423,7 @@ try:
                                 		continue
 
                                 	num_of_turn += 1
-                                	print("num turn: {}".format(num_of_turn))
+                                	# print("num turn: {}".format(num_of_turn))
                                 	dash_start_time = time.perf_counter()
                                 	recovery_start_time = 0.0
                                 	state = States.DASH_AFTER_TURNING_STATE
@@ -457,6 +458,7 @@ try:
                                 		previous_wall_error,
                                 		target_ratio_override=target_ratio,
                                 	)
+                                	print("steering = {}".format(steering))
                                 	esp.send_command(str(speed) + ", " + str(steering) + ", -1, wall follow")
                                 	continue
 
