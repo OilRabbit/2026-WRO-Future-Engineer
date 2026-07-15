@@ -216,9 +216,9 @@ speed = 7
 
 def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, recovery_mode=False, target_ratio_override=None):
 	if recovery_mode:
-		kp = 200000000000000.5
-		kd = 10.0
-		max_steer = 100 * speed / 6
+		kp = 0.50
+		kd = 0.30
+		max_steer = 30 * speed / 6
 		sample_row_candidates = (
 			(120, 140, 160),
 			(135, 155, 175),
@@ -227,7 +227,7 @@ def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, re
 	else:
 		kp = 0.30
 		kd = 0.20
-		max_steer = 30 * speed / 6
+		max_steer = 20 * speed / 6
 		sample_row_candidates = ((170, 185, 200),)
 
 	profile = None
@@ -276,8 +276,8 @@ def get_sector_target_ratio(is_clockwise, completed_turns):
 	return blend(start_ratio, final_ratio, progress)
 
 def get_sector_turn_duration_ms(completed_turns):
-	start_duration_ms = 1000 * 10 / speed
-	min_duration_ms = 900 * 10 / speed
+	start_duration_ms = 900 * 10 / speed
+	min_duration_ms = 850 * 10 / speed
 	progress = clamp((completed_turns - 1) / 4.0, 0.0, 1.0)
 	return blend(start_duration_ms, min_duration_ms, progress)
 
@@ -285,7 +285,7 @@ def get_recovery_duration_ms():
 	return 1000 * 6 / speed
 
 # Checkpoints (default as clockwise case)
-front_point = [200, 98]
+front_point = [200, 93]
 add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
 left_turning_point = [5, 200] #check direction
 add_marker_point("Left Turning Point", left_turning_point[0], left_turning_point[1], color=(0, 0, 255), radius=2, label="Left TP")
@@ -393,10 +393,12 @@ try:
                                 				is_clockwise = True
                                 				remove_marker("Anticlockwise Indicator")
                                 				turning_point = right_turning_point
+                                				#front_point = [280, 98]
                                 			else:
                                 				is_clockwise = False
                                 				remove_marker("Clockwise Indicator")
                                 				turning_point = left_turning_point
+                                				#front_point = [120, 98]
                                 			add_marker_point("Front Turning Point", front_point[0], front_point[1], color=(0, 0, 255), radius=2, label="Front P")
                                 			is_clockwise = get_track_distance(clockwise_indicator[0], clockwise_indicator[1])[0]
                                 			previous_wall_error = 0.0
@@ -410,6 +412,10 @@ try:
 
                                 # Turn
                                 elif state == States.TURNING_STATE:
+                                	if is_clockwise:
+                                		front_point = [260, 93]
+                                	else:
+                                		front_point = [140, 93]
                                 	turn_elapsed_ms = (time.perf_counter_ns() - start_turning_time) / 1000000
                                 	blind_turn_duration_ms = get_sector_turn_duration_ms(num_of_turn)
                                 	front_sees_track = get_track_distance(front_point[0], front_point[1])[0]
@@ -443,12 +449,14 @@ try:
 
                                 	num_of_turn += 1
                                 	# print("num turn: {}".format(num_of_turn))
+                                	# front_point = [200, 98]
                                 	dash_start_time = time.perf_counter()
                                 	run_sector_start_time = 0.0
                                 	state = States.DASH_AFTER_TURNING_STATE
                                 	continue
                                 
                                 elif state == States.DASH_AFTER_TURNING_STATE:
+                                	front_point = [200, 93]
                                 	target_ratio = get_sector_target_ratio(is_clockwise, num_of_turn)
                                 	steering, previous_wall_error, _ = compute_wall_follow_steering(
                                 		track["polygon"],
@@ -457,7 +465,7 @@ try:
                                 		target_ratio_override=target_ratio,
                                 	)
                                 	esp.send_command(str(speed) + ", " + str(steering) + ", -1, settle after turn")
-                                	if time.perf_counter() - dash_start_time < 0.3:
+                                	if time.perf_counter() - dash_start_time < 1:
                                 		continue
                                 	run_sector_start_time = time.perf_counter()
                                 	state = States.RUN_SECTOR_STATE if num_of_turn < 12 else States.LAST_RUN
