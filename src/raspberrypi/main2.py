@@ -205,13 +205,53 @@ def measure_track_profile(track_polygon, sample_rows):
 		"width": width,
 	}
 
+def _compute_pid_steering_from_error(error, previous_error, kp, kd, max_steer):
+	error_delta = error - previous_error
+	steering = (kp * error) + (kd * error_delta)
+	steering = int(round(clamp(steering, -max_steer, max_steer)))
+	return steering, error_delta
+
 outer_wall_offset_px = 140
 speed = 7
 
 def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, recovery_mode=False, target_ratio_override=None):
-	sample_rows = (120, 140, 160) if recovery_mode else (170, 185, 200)
-	profile = measure_track_profile(track_polygon, sample_rows)
+	if recovery_mode:
+		kp = 200000000000000.5
+		kd = 10.0
+		max_steer = 100 * speed / 6
+		sample_row_candidates = (
+			(120, 140, 160),
+			(135, 155, 175),
+			(150, 170, 190),
+		)
+	else:
+		kp = 0.30
+		kd = 0.20
+		max_steer = 30 * speed / 6
+		sample_row_candidates = ((170, 185, 200),)
+
+	profile = None
+	for sample_rows in sample_row_candidates:
+		profile = measure_track_profile(track_polygon, sample_rows)
+		if profile is not None:
+			profile["sample_rows"] = sample_rows
+			break
+
 	if profile is None:
+		if recovery_mode:
+			steering, error_delta = _compute_pid_steering_from_error(previous_error, previous_error, kp, kd, max_steer)
+			profile = {
+				"left_x": None,
+				"right_x": None,
+				"width": None,
+				"target_x": None,
+				"error": previous_error,
+				"error_delta": error_delta,
+				"target_ratio": None,
+				"sample_rows": None,
+				"fallback_pid": True,
+			}
+			return steering, previous_error, profile
 		return 0, previous_error, None
 
 	target_ratio = target_ratio_override if target_ratio_override is not None else (0.6 if is_clockwise else 0.4)
@@ -220,22 +260,13 @@ def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, re
 	else:
 		target_x = profile["right_x"] - outer_wall_offset_px
 	error = target_x - (video_size[0] / 2)
-	error_delta = error - previous_error
+	steering, error_delta = _compute_pid_steering_from_error(error, previous_error, kp, kd, max_steer)
 
-	if recovery_mode:
-		kp = 200000000000000.5
-		kd = 10.0
-		max_steer = 100 * speed / 6
-	else:
-		kp = 0.30
-		kd = 0.20
-		max_steer = 30 * speed / 6
-
-	steering = (kp * error) + (kd * error_delta)
-	steering = int(round(clamp(steering, -max_steer, max_steer)))
 	profile["target_x"] = target_x
 	profile["error"] = error
+	profile["error_delta"] = error_delta
 	profile["target_ratio"] = target_ratio
+	profile["fallback_pid"] = False
 	return steering, error, profile
 
 def get_sector_target_ratio(is_clockwise, completed_turns):
@@ -397,9 +428,6 @@ try:
                                 		recovery_mode=True,
                                 		target_ratio_override=(0.48 if is_clockwise else 0.52),
                                 	)
-
-                                	if profile is None:
-                                		steering = 55 if is_clockwise else -55
                                 	esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-align")
 
                                 	recovery_elapsed_ms = (time.perf_counter() - recovery_start_time) * 1000
