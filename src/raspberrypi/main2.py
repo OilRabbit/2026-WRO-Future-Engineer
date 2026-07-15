@@ -205,6 +205,9 @@ def measure_track_profile(track_polygon, sample_rows):
 		"width": width,
 	}
 
+outer_wall_offset_px = 140
+speed = 7
+
 def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, recovery_mode=False, target_ratio_override=None):
 	sample_rows = (120, 140, 160) if recovery_mode else (170, 185, 200)
 	profile = measure_track_profile(track_polygon, sample_rows)
@@ -212,18 +215,21 @@ def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, re
 		return 0, previous_error, None
 
 	target_ratio = target_ratio_override if target_ratio_override is not None else (0.6 if is_clockwise else 0.4)
-	target_x = profile["left_x"] + profile["width"] * target_ratio
+	if is_clockwise:
+		target_x = profile["left_x"] + outer_wall_offset_px
+	else:
+		target_x = profile["right_x"] - outer_wall_offset_px
 	error = target_x - (video_size[0] / 2)
 	error_delta = error - previous_error
 
 	if recovery_mode:
-		kp = 0.25
-		kd = 0.35
-		max_steer = 30
+		kp = 20.5
+		kd = 10.0
+		max_steer = 100 * speed / 6
 	else:
-		kp = 0.25
-		kd = 0.35
-		max_steer = 30
+		kp = 0.30
+		kd = 0.20
+		max_steer = 35 * speed / 6
 
 	steering = (kp * error) + (kd * error_delta)
 	steering = int(round(clamp(steering, -max_steer, max_steer)))
@@ -237,8 +243,6 @@ def get_sector_target_ratio(is_clockwise, completed_turns):
 	final_ratio = 0.46 if is_clockwise else 0.54
 	progress = clamp((completed_turns - 1) / 4.0, 0.0, 1.0)
 	return blend(start_ratio, final_ratio, progress)
-
-speed = 6
 
 def get_sector_turn_duration_ms(completed_turns):
 	start_duration_ms = 1000 * 10 / speed
@@ -440,7 +444,7 @@ try:
 
                                 # Last forward to stop
                                 elif state == States.LAST_RUN:
-                                	end_sector_point = [250, 35] if is_clockwise else [150, 35]
+                                	end_sector_point = [200, 70] 
                                 	add_marker_point("End Sector Point", end_sector_point[0], end_sector_point[1], color=(0, 0, 255), radius=2, label="Stop P")
                                 	target_ratio = get_sector_target_ratio(is_clockwise, num_of_turn)
                                 	steering, previous_wall_error, _ = compute_wall_follow_steering(track["polygon"], is_clockwise, previous_wall_error, target_ratio_override=target_ratio)
