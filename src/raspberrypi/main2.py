@@ -413,9 +413,9 @@ try:
                                 # Turn
                                 elif state == States.TURNING_STATE:
                                 	if is_clockwise:
-                                		front_point = [260, 93]
+                                		front_point = [270, 93]
                                 	else:
-                                		front_point = [140, 93]
+                                		front_point = [130, 93]
                                 	turn_elapsed_ms = (time.perf_counter_ns() - start_turning_time) / 1000000
                                 	blind_turn_duration_ms = get_sector_turn_duration_ms(num_of_turn)
                                 	front_sees_track = get_track_distance(front_point[0], front_point[1])[0]
