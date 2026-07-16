@@ -362,7 +362,7 @@ try:
 				last_pillar_color = None
 				run_target_sent = False
 				target_done = False
-				OC2_state = OC2_States.ALIGN_1_1
+				OC2_state = OC2_States.LEAVE
 				print("leave") 
 			# End of reset #
 			reset_OC = False
@@ -633,7 +633,7 @@ try:
 						OC2_state = OC2_States.PILLAR
 						print("pillar")
 						continue
-					angle = (track["center_x"] - 208 + is_clockwise * 16) / 0.1875
+					angle = (track["center_x"] - 210 + is_clockwise * 20) / 0.1875
 					if angle > 100:
 						angle = 100
 					if angle < -100:
