@@ -239,7 +239,7 @@ try:
                 # ==================================================================
                 elif oc1_parking_state == ParkingStates.BACKWARD_ENCODER_MOVE:
                     if run_target_sent == False:
-                        send_command_logged("-6, 0, 64, forward target")
+                        send_command_logged("-6, 0, 65, forward target")
                         run_target_sent = True
                         target_done = False
 
