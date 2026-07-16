@@ -566,7 +566,7 @@ try:
 					if not is_clockwise:
 						if pillar_count % 3 == 0:
 							enter_flag = 1
-							if track["center_x"] < 190:
+							if track["center_x"] < 180:
 								OC2_state = OC2_States.ALIGN_0_0
 								print("align_0_0")
 							else:
@@ -623,7 +623,7 @@ try:
 					if pillar["color"] != None and abs(pillar["center_x"] - 200) > 100:
 						esp.send_command("6, 0, -1, move")
 						print(pillar["color"] + str(pillar["center_x"]))
-						time.sleep(1)
+						time.sleep(1.25)
 					OC2_state = OC2_States.WHITE
 					print("white")
 					continue
@@ -633,7 +633,7 @@ try:
 						OC2_state = OC2_States.PILLAR
 						print("pillar")
 						continue
-					angle = (track["center_x"] - 210 + is_clockwise * 20) / 0.1875
+					angle = (track["center_x"] - 212 + is_clockwise * 24) / 0.1875
 					if angle > 100:
 						angle = 100
 					if angle < -100:
@@ -685,9 +685,9 @@ try:
 						angle = -95
 					if lot["center_x"] > 0 and lot["center_y"] < 95:
 						angle /= ((95 / lot["center_y"]) ** 5)
-						angle = min(-42, angle)
+						angle = min(-24, angle)
 						print("small")
-					print(angle)
+					#print(angle)
 					speed_var = min(95, abs(angle)) / 95
 					speed = 5.5 + speed_var
 					esp.send_command(str(speed) + ", " + str(angle) + ", -1, P")
@@ -711,7 +711,7 @@ try:
                                         if lot["center_x"] > 0 and lot["center_y"] < 90:
                                                 angle /= ((90 / lot["center_y"]) ** 1)
                                                 print("small")
-                                        print(angle)
+                                        #print(angle)
                                         speed_var = min(95, abs(angle)) / 95
                                         speed = 5.5 + speed_var
                                         esp.send_command(str(speed) + ", " + str(angle) + ", -1, P")
@@ -739,7 +739,7 @@ try:
                                                 angle /= ((105 / lot["center_y"]) ** 5)
                                                 angle = max(42, angle)
                                                 print("small")
-                                        print(angle)
+                                        #print(angle)
                                         speed_var = min(95, abs(angle)) / 95
                                         speed = 5.5 + speed_var
                                         if lot["center_x"] < 20:
@@ -780,7 +780,7 @@ try:
                                         if lot["center_x"] > 0 and lot["center_y"] < 90:
                                                 angle /= ((90 / lot["center_y"]) ** 1)
                                                 print("small")
-                                        print(angle)
+                                        #print(angle)
                                         speed_var = min(95, abs(angle)) / 95
                                         speed = 5.5 + speed_var
                                         if lot["center_x"] < 10 or lot["center_y"] > 105:
