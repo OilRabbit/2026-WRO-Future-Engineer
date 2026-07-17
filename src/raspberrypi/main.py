@@ -335,8 +335,193 @@ def run_parking_other():
 
 		time.sleep(0.02)
 
+def run_parking_align_0_0_enter():
+	print("[PARKING] Using standalone parking.py routine from ALIGN_0_0 -> ENTER")
+	PURPLE_TARGET_X = 290
+	PURPLE_ALIGN_SPEED = 5
+	PURPLE_STOP_THRESHOLD = 61.5
+	PROBE_Y = 71
+	PROBE_LEFT_X = 179
+	PROBE_RIGHT_X = 204
+	STOP_DISTANCE_THRESHOLD = 1.0
+	KP = 16
+	KD = 1.2
+	last_alignment_error = 0.0
+	target_done = False
+	run_target_sent = False
+	state = "ALIGNING"
+	pause_start = 0.0
+
+	while True:
+		reply = esp_replyNprint()
+		if reply == "EOC2":
+			return False
+		if reply == "Done Target":
+			target_done = True
+
+		if state == "ALIGNING":
+			_, parking, _ = get_latest_data()
+			purple_x = parking.get("center_x", 0)
+			purple_area = (parking.get("width", 0) * parking.get("height", 0)) // 100
+
+			print(f"[TRACKING WALL 1] X: {purple_x} | Area: {purple_area}")
+
+			if purple_x != 0 and purple_area > 10:
+				if purple_area >= PURPLE_STOP_THRESHOLD:
+					print("[WALL 1 DETECTED] Halting for temporary pause...")
+					send_command_logged("0, 0, 0, wall 1 stop")
+					state = "WALL_1_PAUSE"
+					pause_start = time.time()
+				else:
+					error = purple_x - PURPLE_TARGET_X
+					align_steering = int(clamp(error * 1.9, -55, 55))
+					send_command_logged(f"{PURPLE_ALIGN_SPEED}, {align_steering}, 0, purple align")
+			else:
+				send_command_logged("0, 0, 0, tracking lost holding")
+
+		elif state == "WALL_1_PAUSE":
+			if time.time() - pause_start < 1.5:
+				send_command_logged("0, 0, 0, holding pause")
+			else:
+				print("[SYSTEM] Pause complete. Transitioning to Continuous PD Wall Approach...")
+				state = "BLACK_WALL_PD_APPROACH"
+				last_alignment_error = 0.0
+
+		elif state == "BLACK_WALL_PD_APPROACH":
+			_, parking, track = get_latest_data()
+			purple_y = parking.get("center_y", 0)
+			touch_inside, touch_dist = get_track_distance(150, 77)
+			print(f"[TOUCH POINT (150, 77)] Inside Poly: {int(touch_inside)} | Distance to Edge: {touch_dist:.2f}")
+			print(f"[PARKING LOT Y] {purple_y}")
+
+			if touch_dist < STOP_DISTANCE_THRESHOLD:
+				send_command_logged("0, 0, 0, R")
+				print(f"[WALL ARRIVAL MET] Edge distance dropped below {STOP_DISTANCE_THRESHOLD}")
+				time.sleep(1.0)
+				state = "BACKWARD"
+				run_target_sent = False
+				target_done = False
+				continue
+
+			if purple_y > 180:
+				edge_angle = get_front_edge_angle(track.get("polygon"))
+				if edge_angle is not None:
+					print(f"[FRONT EDGE ANGLE] {edge_angle:+.2f} deg")
+					alignment_error = edge_angle
+					derivative = alignment_error - last_alignment_error
+					pd_steering = int(clamp(-(2.8 * alignment_error) - (0.9 * derivative) - 12, -55, 55))
+					last_alignment_error = alignment_error
+					send_command_logged(f"{PURPLE_ALIGN_SPEED}, {pd_steering}, 0, front edge line align")
+					print(f"[PD CONTROL] Edge Angle Error: {alignment_error:+.2f} deg | Transmitted Steer: {pd_steering}")
+				else:
+					has_poly_l, dist_left = get_track_distance(PROBE_LEFT_X, PROBE_Y)
+					has_poly_r, dist_right = get_track_distance(PROBE_RIGHT_X, PROBE_Y)
+					if dist_left is None or dist_right is None:
+						send_command_logged(f"{PURPLE_ALIGN_SPEED}, 0, 0, fallback probe search")
+					else:
+						dist_left += 0.6
+						print(f"[FALLBACK PROBE LEFT  ({PROBE_LEFT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_l)} | Distance to Edge: {dist_left:.2f}")
+						print(f"[FALLBACK PROBE RIGHT ({PROBE_RIGHT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_r)} | Distance to Edge: {dist_right:.2f}")
+						alignment_error = dist_left - dist_right
+						derivative = alignment_error - last_alignment_error
+						pd_steering = int(clamp((KP * alignment_error) + (KD * derivative), -55, 55))
+						last_alignment_error = alignment_error
+						send_command_logged(f"{PURPLE_ALIGN_SPEED}, {pd_steering}, 0, fallback probe align")
+			else:
+				has_poly_l, dist_left = get_track_distance(PROBE_LEFT_X, PROBE_Y)
+				has_poly_r, dist_right = get_track_distance(PROBE_RIGHT_X, PROBE_Y)
+				if dist_left is None or dist_right is None:
+					send_command_logged(f"{PURPLE_ALIGN_SPEED}, 0, 0, fallback probe search")
+				else:
+					dist_left += 0.6
+					print(f"[FALLBACK PROBE LEFT  ({PROBE_LEFT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_l)} | Distance to Edge: {dist_left:.2f}")
+					print(f"[FALLBACK PROBE RIGHT ({PROBE_RIGHT_X}, {PROBE_Y})] Inside Poly: {int(has_poly_r)} | Distance to Edge: {dist_right:.2f}")
+					alignment_error = dist_left - dist_right
+					derivative = alignment_error - last_alignment_error
+					pd_steering = int(clamp((KP * alignment_error) + (KD * derivative), -55, 55))
+					last_alignment_error = alignment_error
+					send_command_logged(f"{PURPLE_ALIGN_SPEED}, {pd_steering}, 0, fallback probe align")
+
+		elif state == "BACKWARD":
+			if run_target_sent == False:
+				send_command_logged("-6, 0, 1, forward target")
+				run_target_sent = True
+				target_done = False
+			if not target_done:
+				time.sleep(0.001)
+				continue
+			send_command_logged("-1, 0, 0, R")
+			state = "BACKWARD_TURN_1"
+			run_target_sent = False
+			target_done = False
+			continue
+
+		elif state == "BACKWARD_TURN_1":
+			if run_target_sent == False:
+				send_command_logged("6, -100, 43, P")
+				run_target_sent = True
+				target_done = False
+			if not target_done:
+				time.sleep(0.001)
+				continue
+			send_command_logged("0, 60, 0, R")
+			state = "BACKWARD_TURN_1A"
+			run_target_sent = False
+			target_done = False
+			continue
+
+		elif state == "BACKWARD_TURN_1A":
+			if run_target_sent == False:
+				send_command_logged("-6, 30, 30, P")
+				run_target_sent = True
+				target_done = False
+			if not target_done:
+				time.sleep(0.001)
+				continue
+			send_command_logged("-1, 0, 0, R")
+			state = "BACKWARD_TURN_2"
+			run_target_sent = False
+			target_done = False
+			continue
+
+		elif state == "BACKWARD_TURN_2":
+			if run_target_sent == False:
+				send_command_logged("0, 0, -1, stop")
+				send_command_logged("-6, -100, 33, P")
+				run_target_sent = True
+				target_done = False
+			if not target_done:
+				time.sleep(0.001)
+				continue
+			send_command_logged("0, 0, 0, R")
+			state = "STRAIGHT"
+			run_target_sent = False
+			target_done = False
+			continue
+
+		elif state == "STRAIGHT":
+			if run_target_sent == False:
+				send_command_logged("6, 100, 7, forward target")
+				run_target_sent = True
+				target_done = False
+			if not target_done:
+				time.sleep(0.001)
+				continue
+			send_command_logged("0, -60, 0, R")
+			state = "COMPLETED"
+			run_target_sent = False
+			target_done = False
+			continue
+
+		elif state == "COMPLETED":
+			send_command_logged("0, 0, 0, parking complete")
+			return True
+
+		time.sleep(0.02)
+
 state = States.INIT
 OC2_state = OC2_States.INIT
+enter_from_align_0_0 = False
 try:
 	print("IDLE")
 	while True:
@@ -360,6 +545,7 @@ try:
 				pillar_count = 0
 				pillar_count_flag = 1
 				enter_flag = 0
+				enter_from_align_0_0 = False
 				last_pillar_color = None
 				run_target_sent = False
 				target_done = False
@@ -694,11 +880,10 @@ try:
 					speed = 5.5 + speed_var
 					esp.send_command(str(speed) + ", " + str(angle) + ", -1, P")
 					if lot["center_y"] > 105:
+						enter_from_align_0_0 = True
 						OC2_state = OC2_States.ENTER
 						print("enter")
-						esp.send_command("0, 0, 0, stop")
-						time.sleep(2)
-						break
+						continue
 					continue
 
 				if OC2_state == OC2_States.ALIGN_0_1:
@@ -826,7 +1011,10 @@ try:
 				if OC2_state == OC2_States.ENTER:
 					print("last pillar color before stop:", last_pillar_color)
 					send_command_logged("0, 0, 0, stop before parking")
-					if last_pillar_color == "RED":
+					if enter_from_align_0_0:
+						parking_completed = run_parking_align_0_0_enter()
+						enter_from_align_0_0 = False
+					elif last_pillar_color == "RED":
 						parking_completed = run_parking_red()
 					else:
 						parking_completed = run_parking_other()
