@@ -225,9 +225,9 @@ def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, re
 			(150, 170, 190),
 		)
 	else:
-		kp = 0.30
-		kd = 0.20
-		max_steer = 20 * speed / 6
+		kp = 0.25
+		kd = 0.15
+		max_steer = 21 * speed / 6
 		sample_row_candidates = ((170, 185, 200),)
 
 	profile = None
@@ -418,6 +418,7 @@ try:
                                 		front_point = [130, 93]
                                 	turn_elapsed_ms = (time.perf_counter_ns() - start_turning_time) / 1000000
                                 	blind_turn_duration_ms = get_sector_turn_duration_ms(num_of_turn)
+                                	blind_turn_duration_ms = int(blind_turn_duration_ms * 1.08)
                                 	front_sees_track = get_track_distance(front_point[0], front_point[1])[0]
                                 	if turn_elapsed_ms < blind_turn_duration_ms or not front_sees_track:
                                 		steering = 100 if is_clockwise else -100
@@ -433,7 +434,7 @@ try:
                                 	)
                                 	esp.send_command(str(speed) + ", " + str(steering) + ", -1, turn-align")
 
-                                	if turn_elapsed_ms < 1100:
+                                	if turn_elapsed_ms < 1150:
                                 		continue
 
                                 	if profile is not None and abs(profile["error"]) <= 18:
@@ -444,7 +445,7 @@ try:
                                 		state = States.DASH_AFTER_TURNING_STATE
                                 		continue
 
-                                	if turn_elapsed_ms < 1500:
+                                	if turn_elapsed_ms < 1550:
                                 		continue
 
                                 	num_of_turn += 1
