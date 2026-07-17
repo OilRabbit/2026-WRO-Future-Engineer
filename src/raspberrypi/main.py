@@ -869,7 +869,7 @@ try:
 					if angle < -100:
 						angle = -100
 					if pillar["center_y"] < 112.5:
-						angle /= ((112.5 / pillar["center_y"]) ** 2)
+						angle /= ((112.5 / pillar["center_y"]) ** 2.3)
 					if pillar_count == 1 and pillar["center_y"] < 90:
 						angle = (track["center_x"] - 208 + is_clockwise * 16) / 0.1875
 					if pillar["center_x"] < 60 or pillar["center_x"] > 340:
@@ -898,7 +898,7 @@ try:
 						angle = -95
 					if lot["center_x"] > 0 and lot["center_y"] < 95:
 						angle /= ((95 / lot["center_y"]) ** 6)
-						angle = min(-24, angle)
+						angle = min(-22, angle)
 						print("small")
 					#print(angle)
 					speed_var = min(95, abs(angle)) / 95
