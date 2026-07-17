@@ -274,7 +274,7 @@ try:
                 elif oc1_parking_state == ParkingStates.BACKWARD_TURN_1:
                     if run_target_sent == False:
                         steer = -100
-                        send_command_logged(f"6, {steer}, 40, P")
+                        send_command_logged(f"6, {steer}, 43, P")
                         run_target_sent = True
                         target_done = False
 
@@ -308,7 +308,7 @@ try:
                     if run_target_sent == False:
                         steer = -100
                         send_command_logged(f"0, 0, -1, stop")
-                        send_command_logged(f"-6, {steer}, 39, P")
+                        send_command_logged(f"-6, {steer}, 33, P")
                         run_target_sent = True
                         target_done = False
 
@@ -324,7 +324,7 @@ try:
 
                 elif oc1_parking_state == ParkingStates.STRAIGHT:
                     if run_target_sent == False:
-                        send_command_logged("6, 100, 8, forward target")
+                        send_command_logged("6, 100, 7, forward target")
                         run_target_sent = True
                         target_done = False
 
@@ -353,4 +353,3 @@ except KeyboardInterrupt:
     esp.disconnect()
     stop_vision_system()
     time.sleep(0.5)
-
