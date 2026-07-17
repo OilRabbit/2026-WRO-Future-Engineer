@@ -102,7 +102,8 @@ class OC2_States(Enum):
 	ALIGN_0_1 = 5
 	ALIGN_1_0 = 6
 	ALIGN_1_1 = 7
-	ENTER = 8
+	STR_ENTER = 8
+	ENTER = 9
 
 # Function for receiving msg from ESP and print the message with timestamp
 def esp_replyNprint():
@@ -574,13 +575,14 @@ try:
 								print("align_0_1")
 						elif pillar_count % 3 == 2:
 							if pillar["center_y"] < 112.5:
-								enter_flag = 1
-								if pillar["color"] == "RED":
-									OC2_state = OC2_States.ALIGN_0_0
-									print("align_0_0")
-								else:
-									OC2_state = OC2_States.ALIGN_0_1
-									print("align_0_1")
+								if lot["center_x"] > 160:
+									enter_flag = 1
+									if pillar["color"] == "RED":
+										OC2_state = OC2_States.ALIGN_0_0
+										print("align_0_0")
+									else:
+										OC2_state = OC2_States.ALIGN_0_1
+										print("align_0_1")
 					else:
 						if pillar_count % 3 == 0:
 							enter_flag = 1
@@ -591,7 +593,7 @@ try:
 								OC2_state = OC2_States.ALIGN_1_1
 								print("align_1_1")
 						elif pillar_count % 3 == 2:
-							if lot["center_x"] < 200:
+							if lot["center_x"] > 0 and lot["center_x"] < 160:
 								enter_flag = 1
 								if pillar["color"] == "GREEN":
 									OC2_state = OC2_States.ALIGN_1_0
@@ -620,8 +622,8 @@ try:
 					esp.send_command("0, 0, -1, stop")
 					time.sleep(0.4)
 					pillar, lot, track = get_latest_data()
-					if pillar["color"] != None and abs(pillar["center_x"] - 200) > 100:
-						esp.send_command("6, 0, -1, move")
+					if pillar["color"] != None and abs(pillar["center_x"] - 200) > 60:
+						esp.send_command("6, " + str(is_clockwise * -160 + 80) + ", -1, move")
 						print(pillar["color"] + str(pillar["center_x"]))
 						time.sleep(1.25)
 					OC2_state = OC2_States.WHITE
@@ -648,7 +650,7 @@ try:
 						OC2_state = OC2_States.WHITE
 						print("white")
 						continue
-					angle = (pillar["center_x"] * 1.75 + ((pillar["color"] == "RED") * 2 - 1) * pillar["center_y"] - 328.125 - (pillar["color"] == "GREEN") * 43.75) / 1.25
+					angle = (pillar["center_x"] * 1.3 + ((pillar["color"] == "RED") * 2 - 1) * pillar["center_y"] - 300 + (pillar["color"] == "GREEN") * 80) / 1.25
 					#if not get_track_distance(62.5 + is_clockwise * 275, 168.75)[0] and angle * (is_clockwise * 2 - 1) > 0:
 						#angle = 20 - is_clockwise * 40
 					if angle > 100:
@@ -656,35 +658,35 @@ try:
 					if angle < -100:
 						angle = -100
 					if pillar["center_y"] < 112.5:
-						angle /= ((112.5 / pillar["center_y"]) ** 1.6)
+						angle /= ((112.5 / pillar["center_y"]) ** 2)
 					if pillar_count == 1 and pillar["center_y"] < 90:
+						angle = (track["center_x"] - 208 + is_clockwise * 16) / 0.1875
+					if pillar["center_x"] < 60 or pillar["center_x"] > 340:
 						angle = (track["center_x"] - 208 + is_clockwise * 16) / 0.1875
 					print(angle)
 					speed_var = min(100, abs(angle)) / 100
 					speed = 6 + speed_var
 					esp.send_command(str(speed) + ", " + str(angle) + ", -1, P")
-					if pillar["center_y"] > 168.75:
+					if pillar["center_y"] > 180:
 						if pillar_count_flag:
 							pillar_count += 1
 							print("pillar " + str(pillar_count))
 							pillar_count_flag = 0
 							if pillar_count % 3 == 0:
 								last_pillar_color = pillar["color"]
-					elif pillar["center_y"] < 112.5:
+					elif pillar["center_y"] < 135:
 						pillar_count_flag = 1
 					continue
 
 				if OC2_state == OC2_States.ALIGN_0_0:
 					if lot["center_x"] > 0:
 						angle = (lot["center_x"] - lot["center_y"] - 195) / 1
-					else:
-						angle = (track["center_x"] - 200) / 0.1875
 					if angle > 95:
 						angle = 95
 					if angle < -95:
 						angle = -95
 					if lot["center_x"] > 0 and lot["center_y"] < 95:
-						angle /= ((95 / lot["center_y"]) ** 5)
+						angle /= ((95 / lot["center_y"]) ** 6)
 						angle = min(-24, angle)
 						print("small")
 					#print(angle)
@@ -701,9 +703,7 @@ try:
 
 				if OC2_state == OC2_States.ALIGN_0_1:
                                         if lot["center_x"] > 0:
-                                                angle = (lot["center_x"] - lot["center_y"] - 260) / 1
-                                        else:
-                                                angle = (track["center_x"] - 200) / 0.1875
+                                                angle = (lot["center_x"] - lot["center_y"] - 270) / 1
                                         if angle > 95:
                                                 angle = 95
                                         if angle < -95:
@@ -719,18 +719,25 @@ try:
                                         	time.sleep(0.5)
                                         	pillar, lot, track = get_latest_data()
                                         	if lot["center_x"] > 390 or lot["center_x"] == 0:
-                                                	OC2_state = OC2_States.ENTER
-                                                	print("enter")
-                                                	esp.send_command("0, 0, 0, stop")
-                                                	time.sleep(2)
-                                                	break
+                                                	esp.send_command("-6, 0, 10, P")
+                                                	while reply != "Done Target":
+                                                		time.sleep(0.01)
+                                                		reply = esp_replyNprint()
+                                                	reply = esp_replyNprint()
+                                                	esp.send_command("-1, 0, -1, R")
+                                                	esp.send_command("6, 100, 65, P")
+                                                	while reply != "Done Target":
+                                                		time.sleep(0.01)
+                                                		reply = esp_replyNprint()
+                                                	reply = esp_replyNprint()
+                                                	esp.send_command("-1, 0, -1, R")
+                                                	OC2_state = OC2_States.STR_ENTER
+                                                	print("str enter")
                                         continue
 
 				if OC2_state == OC2_States.ALIGN_1_0:
                                         if lot["center_x"] > 0:
-                                                angle = (lot["center_x"] + lot["center_y"] - 245) / 1
-                                        else:
-                                                angle = (track["center_x"] - 200) / 0.1875
+                                                angle = (lot["center_x"] + lot["center_y"] - 235) / 1
                                         if angle > 95:
                                                 angle = 95
                                         if angle < -95:
@@ -746,25 +753,29 @@ try:
                                         	time.sleep(0.3)
                                         	pillar, lot, track = get_latest_data()
                                         	if lot["center_x"] < 20:
-                                        		print("move forward")
-                                        		esp.send_command("5.5, 0, 20, P")
-                                        		while reply != "Done Target":
-                                        			time.sleep(0.01)
-                                        			reply = esp_replyNprint()
-                                        		reply = esp_replyNprint()
-                                        		esp.send_command("-1, 0, 0, R")
-                                        		print("u-turn")
-                                        		esp.send_command("6, 100, 120, P")
-                                        		while reply != "Done Target":
-                                        			time.sleep(0.01)
-                                        			reply = esp_replyNprint()
-                                        		reply = esp_replyNprint()
-                                        		esp.send_command("-1, 0, 0, R")
-                                        		OC2_state = OC2_States.ENTER
-                                        		print("enter")
-                                        		esp.send_command("0, 0, 0, stop")
-                                        		time.sleep(2)
-                                        		break
+                                        		print("backward turn")
+                                        		#esp.send_command("-6, 0, 10, P")
+                                        		#while reply != "Done Target":
+                                        			#time.sleep(0.01)
+                                        			#reply = esp_replyNprint()
+                                        		#reply = esp_replyNprint()
+                                        		#esp.send_command("-1, 0, 0, R")
+                                        		#print("turn")
+                                        		#esp.send_command("-6, -100, 30, P")
+                                        		#while reply != "Done Target":
+                                        			#time.sleep(0.01)
+                                        			#reply = esp_replyNprint()
+                                        		#reply = esp_replyNprint()
+                                        		#esp.send_command("-1, 0, 0, R")
+                                        		#OC2_state = OC2_States.ENTER
+                                        		#print("enter")
+                                        		while track["center_x"] > 205:
+                                        			esp.send_command("-6, 100, -1, P")
+                                        			time.sleep(0.3)
+                                        			pillar, lot, track = get_latest_data()
+                                        		OC2_state = OC2_States.STR_ENTER
+                                        		print("str enter")
+                                        		continue
                                         esp.send_command(str(speed) + ", " + str(angle) + ", -1, P")
                                         continue
 
@@ -783,7 +794,7 @@ try:
                                         #print(angle)
                                         speed_var = min(95, abs(angle)) / 95
                                         speed = 5.5 + speed_var
-                                        if lot["center_x"] < 10 or lot["center_y"] > 105:
+                                        if lot["center_x"] < 10 or lot["center_y"] > 90:
                                         	time.sleep(0.3)
                                         	pillar, lot, track = get_latest_data()
                                         	if lot["center_x"] < 10 or lot["center_y"] > 105:
@@ -792,20 +803,25 @@ try:
                                         			esp.send_command("6, -100, -1, P")
                                         			time.sleep(0.3)
                                         			pillar, lot, track = get_latest_data()
-                                        		print("backward turn")
-                                        		esp.send_command("-6, 100, 60, P")
-                                        		while reply != "Done Target":
-                                        			time.sleep(0.01)
-                                        			reply = esp_replyNprint()
-                                        		reply = esp_replyNprint()
-                                        		esp.send_command("-1, 0, 0, R")
-                                        		OC2_state = OC2_States.ENTER
-                                        		print("enter")
-                                        		esp.send_command("0, 0, 0, stop")
-                                        		time.sleep(2)
-                                        		break
+                                        		OC2_state = OC2_States.STR_ENTER
+                                        		print("str enter")
+                                        		continue
                                         esp.send_command(str(speed) + ", " + str(angle) + ", -1, P")
                                         continue
+
+				if OC2_state == OC2_States.STR_ENTER:
+					print("move forward")
+					pillar, lot, track = get_latest_data()
+					while lot["center_x"] == 0 or lot["center_y"] < 170:
+						if lot["center_x"] < 200:
+							esp.send_command("5.5, -20, -1, P")
+						else:
+							esp.send_command("5.5, 20, -1, P")
+						time.sleep(0.3)
+						pillar, lot, track = get_latest_data()
+					esp.send_command("0, 0, 0, stop")
+					time.sleep(2)
+					break
 
 				if OC2_state == OC2_States.ENTER:
 					print("last pillar color before stop:", last_pillar_color)
