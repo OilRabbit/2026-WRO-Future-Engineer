@@ -1,3 +1,5 @@
+import cv2
+import numpy as np
 import time
 import datetime
 import math
@@ -122,6 +124,29 @@ def send_command_logged(cmd):
 
 def clamp(value, minimum, maximum):
 	return max(minimum, min(maximum, value))
+
+def get_front_edge_angle(track_polygon, y_min=62, y_max=95):
+	if track_polygon is None:
+		return None
+
+	pts = track_polygon.reshape(-1, 2)
+	roi_pts = []
+	for x, y in pts:
+		if y_min <= y <= y_max:
+			roi_pts.append([float(x), float(y)])
+
+	if len(roi_pts) < 5:
+		return None
+
+	roi_pts = np.array(roi_pts, dtype=np.float32)
+	vx, vy, _, _ = cv2.fitLine(roi_pts, cv2.DIST_L2, 0, 0.01, 0.01)
+	angle_deg = math.degrees(math.atan2(float(vy), float(vx)))
+
+	while angle_deg > 90:
+		angle_deg -= 180
+	while angle_deg < -90:
+		angle_deg += 180
+	return angle_deg
 
 def wait_for_target_done(stop_reply="EOC2"):
 	while True:
