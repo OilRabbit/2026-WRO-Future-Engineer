@@ -811,12 +811,13 @@ try:
 								print("align_1_1")
 						elif pillar_count % 3 == 2:
 							if lot["center_x"] > 0 and lot["center_x"] < 160:
-								if pillar["color"] == "GREEN":
-									enter_flag = 1
-									OC2_state = OC2_States.ALIGN_1_0
-									print("align_1_0")
-								else:
-									enter_flag_2 = 1
+								if pillar["center_y"] < 112.5:
+									if pillar["color"] == "GREEN":
+										enter_flag = 1
+										OC2_state = OC2_States.ALIGN_1_0
+										print("align_1_0")
+									else:
+										enter_flag_2 = 1
 
 				if OC2_state == OC2_States.LEAVE:
 					if track["center_x"] < 200:
@@ -851,7 +852,7 @@ try:
 						OC2_state = OC2_States.PILLAR
 						print("pillar")
 						continue
-					angle = (track["center_x"] - 212 + is_clockwise * 24) / 0.1875
+					angle = (track["center_x"] - 220 + is_clockwise * 40) / 0.1875
 					if angle > 100:
 						angle = 100
 					if angle < -100:
@@ -866,7 +867,7 @@ try:
 						OC2_state = OC2_States.WHITE
 						print("white")
 						continue
-					angle = (pillar["center_x"] * 1.3 + ((pillar["color"] == "RED") * 2 - 1) * pillar["center_y"] - 300 + (pillar["color"] == "GREEN") * 80) / 1.25
+					angle = (pillar["center_x"] * 1.3 + ((pillar["color"] == "RED") * 2 - 1) * pillar["center_y"] - 300 + (pillar["color"] == "GREEN") * (80 - is_clockwise * 20)) / 1.25
 					#if not get_track_distance(62.5 + is_clockwise * 275, 168.75)[0] and angle * (is_clockwise * 2 - 1) > 0:
 						#angle = 20 - is_clockwise * 40
 					if angle > 100:
@@ -874,7 +875,7 @@ try:
 					if angle < -100:
 						angle = -100
 					if pillar["center_y"] < 112.5:
-						angle /= ((112.5 / pillar["center_y"]) ** 2.3)
+						angle /= ((112.5 / pillar["center_y"]) ** 2.4)
 					if pillar_count == 1 and pillar["center_y"] < 90:
 						angle = (track["center_x"] - 208 + is_clockwise * 16) / 0.1875
 					if pillar["center_x"] < 60 or pillar["center_x"] > 340:
@@ -903,7 +904,7 @@ try:
 						angle = -95
 					if lot["center_x"] > 0 and lot["center_y"] < 95:
 						angle /= ((95 / lot["center_y"]) ** 6)
-						angle = min(-22, angle)
+						angle = min(-16, angle)
 						print("small")
 					#print(angle)
 					speed_var = min(95, abs(angle)) / 95
