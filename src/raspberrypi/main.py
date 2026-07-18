@@ -212,7 +212,7 @@ def _compute_pid_steering_from_error(error, previous_error, kp, kd, max_steer):
 	return steering, error_delta
 
 outer_wall_offset_px = 140
-speed = 7
+speed = 6
 
 def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, recovery_mode=False, target_ratio_override=None):
 	if recovery_mode:
@@ -225,8 +225,8 @@ def compute_wall_follow_steering(track_polygon, is_clockwise, previous_error, re
 			(150, 170, 190),
 		)
 	else:
-		kp = 0.25
-		kd = 0.15
+		kp = 2.2	# PD control tune
+		kd = 0.85	# PD control tune
 		max_steer = 21 * speed / 6
 		sample_row_candidates = ((170, 185, 200),)
 
@@ -418,7 +418,7 @@ try:
                                 		front_point = [130, 93]
                                 	turn_elapsed_ms = (time.perf_counter_ns() - start_turning_time) / 1000000
                                 	blind_turn_duration_ms = get_sector_turn_duration_ms(num_of_turn)
-                                	blind_turn_duration_ms = int(blind_turn_duration_ms * 1.08)
+                                	blind_turn_duration_ms = int(blind_turn_duration_ms * 1.55)      # tune this to adjust turning time
                                 	front_sees_track = get_track_distance(front_point[0], front_point[1])[0]
                                 	if turn_elapsed_ms < blind_turn_duration_ms or not front_sees_track:
                                 		steering = 100 if is_clockwise else -100
