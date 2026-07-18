@@ -73,6 +73,7 @@ pillar_count = 0
 pillar_count_flag = 1
 pillar_count_temp = 0
 enter_flag = 0
+enter_flag_2 = 0
 last_pillar_color = None
 run_target_sent = False
 target_done = False
@@ -570,6 +571,7 @@ try:
 				pillar_count = 0
 				pillar_count_flag = 1
 				enter_flag = 0
+				enter_flag_2 = 0
 				enter_from_align_0_0 = False
 				last_pillar_color = None
 				run_target_sent = False
@@ -797,21 +799,24 @@ try:
 					else:
 						if pillar_count % 3 == 0:
 							enter_flag = 1
-							if track["center_x"] > 220:
-								OC2_state = OC2_States.ALIGN_1_0
-								print("align_1_0")
-							else:
-								OC2_state = OC2_States.ALIGN_1_1
-								print("align_1_1")
-						elif pillar_count % 3 == 2:
-							if lot["center_x"] > 0 and lot["center_x"] < 160:
-								enter_flag = 1
-								if pillar["color"] == "GREEN":
+							if not enter_flag_2:
+								if track["center_x"] > 220:
 									OC2_state = OC2_States.ALIGN_1_0
 									print("align_1_0")
 								else:
 									OC2_state = OC2_States.ALIGN_1_1
 									print("align_1_1")
+							else:
+								OC2_state = OC2_States.ALIGN_1_1
+								print("align_1_1")
+						elif pillar_count % 3 == 2:
+							if lot["center_x"] > 0 and lot["center_x"] < 160:
+								if pillar["color"] == "GREEN":
+									enter_flag = 1
+									OC2_state = OC2_States.ALIGN_1_0
+									print("align_1_0")
+								else:
+									enter_flag_2 = 1
 
 				if OC2_state == OC2_States.LEAVE:
 					if track["center_x"] < 200:
